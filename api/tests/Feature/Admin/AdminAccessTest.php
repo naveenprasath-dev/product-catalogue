@@ -22,7 +22,8 @@ final class AdminAccessTest extends AdminTestCase
     /** @return list<string> */
     private function adminPages(int $enquiryId): array
     {
-        return ['/admin', '/admin/enquiries', "/admin/enquiries/{$enquiryId}"];
+        return ['/admin', '/admin/enquiries', "/admin/enquiries/{$enquiryId}",
+            '/admin/currencies', '/admin/currencies/create', '/admin/currencies/EUR/edit'];
     }
 
     public function test_guests_are_redirected_to_the_login_page(): void

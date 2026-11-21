@@ -36,3 +36,15 @@ export type Paginated<T> = {
         to: number | null;
     };
 };
+
+/** App\Http\Resources\Admin\CurrencyResource. `rate` = units per 1 unit of the base currency (USD). */
+export type AdminCurrency = {
+    code: string;
+    name: string;
+    symbol: string;
+    rate: number;
+    enabled: boolean;
+    is_default: boolean;
+    is_base: boolean;
+    rate_updated_at: string | null;
+};

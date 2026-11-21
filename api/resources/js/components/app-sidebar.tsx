@@ -1,5 +1,5 @@
 import { Link } from '@inertiajs/react';
-import { Inbox, LayoutGrid } from 'lucide-react';
+import { Coins, Inbox, LayoutGrid } from 'lucide-react';
 import AppLogo from '@/components/app-logo';
 import { NavMain } from '@/components/nav-main';
 import { NavUser } from '@/components/nav-user';
@@ -13,6 +13,7 @@ import {
     SidebarMenuItem,
 } from '@/components/ui/sidebar';
 import { dashboard } from '@/routes/admin';
+import { index as currencies } from '@/routes/admin/currencies';
 import { index as enquiries } from '@/routes/admin/enquiries';
 import type { NavItem } from '@/types';
 
@@ -26,6 +27,12 @@ const mainNavItems: NavItem[] = [
         title: 'Enquiries',
         href: enquiries(),
         icon: Inbox,
+        matchPrefix: true,
+    },
+    {
+        title: 'Currencies',
+        href: currencies(),
+        icon: Coins,
         matchPrefix: true,
     },
 ];
