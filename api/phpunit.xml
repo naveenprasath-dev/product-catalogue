@@ -21,6 +21,8 @@
         <!-- force + <server>: the api container already exports DB_*, CACHE_STORE etc., and Laravel reads $_SERVER first. -->
         <env name="APP_ENV" value="testing" force="true"/>
         <server name="APP_ENV" value="testing" force="true"/>
+        <env name="ADMIN_ENABLED" value="true" force="true"/>
+        <server name="ADMIN_ENABLED" value="true" force="true"/>
         <env name="APP_MAINTENANCE_DRIVER" value="file"/>
         <env name="BCRYPT_ROUNDS" value="4"/>
         <env name="BROADCAST_CONNECTION" value="null"/>
