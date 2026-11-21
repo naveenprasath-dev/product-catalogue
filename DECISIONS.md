@@ -279,3 +279,9 @@ and readable DOM assertions), `msw` (mock the API at the network level so the re
 | Invalid list filters (B5) | Ignored (all statuses, page 1), always 200 | Stale bookmarks and hand-edited URLs should still show the list |
 | Security headers | `AdminSecurityHeaders` on `/admin` only, added to the middleware priority list before `auth` | Redirects and 403s must carry them too; the API keeps its own (stateless) headers |
 | Toast duration | 6s (was Sonner's 4s) | Slow actions like "Sync live rates" finished before the admin looked back at the corner |
+
+## Code-convention exceptions
+| Area | Decision | Why |
+|---|---|---|
+| `declare(strict_types=1)` | Required in all our PHP (app, routes, database, tests). Laravel's generated `config/*.php` and `public/index.php` are left as generated. | Config files coerce `env()` values; strict mode would turn a missing env var (`null`) into a `TypeError` at boot. Blade views are templates, not PHP classes. |
+

@@ -44,6 +44,7 @@ time lost) · **minor** (annoyance, quick fix). Status: **fixed** · **workaroun
 | 22 | 2026-11-21 | Enquiry form kept the previous user's details after logout (QA B6) | web | minor | fixed |
 | 23 | 2026-11-21 | Admin mobile sidebar stayed open after navigating (QA B7) | admin/ui | minor | fixed |
 | 24 | 2026-11-21 | Admin re-send/sync toast disappeared before it was noticed | admin/ui | minor | fixed |
+| 25 | 2026-11-22 | One API test failed once, then passed in 13 runs (flaky, unidentified) | tests | minor | open |
 
 ---
 
@@ -276,4 +277,16 @@ time lost) · **minor** (annoyance, quick fix). Status: **fixed** · **workaroun
 - **Fix:** Toasts last 6 s and pause on hover; a feature test asserts the flash.
 - **Prevention / lesson:** Assert flashes in tests; pick durations users can actually read.
 - **Refs:** `api/resources/js/components/ui/sonner.tsx`.
+
+## 25. One API test failed once, then passed in 13 runs (flaky, unidentified)
+
+- **Symptom:** During the pre-PR audit one full `php artisan test` run reported 1 failed / 228 passed;
+  13 consecutive reruns all passed (229). The failing test's name wasn't captured.
+- **Cause:** Unknown. Suspects: time-sensitive tests (re-send allowed for pending enquiries older than
+  5 minutes, throttle windows, login timing) crossing a boundary mid-run.
+- **Fix:** None yet (open).
+- **Prevention / lesson:** When a suite fails, capture the full output before rerunning
+  (`php artisan test 2>&1 | tee /tmp/test.log`). Time-dependent tests should freeze time
+  (`$this->travelTo()` / `Carbon::setTestNow()`).
+- **Refs:** `api/tests/Feature/Admin/ResendEnquiryTest.php`, `api/tests/Feature/Admin/LoginTest.php` (suspects).
 
