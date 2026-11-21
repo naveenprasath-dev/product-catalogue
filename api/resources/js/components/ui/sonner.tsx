@@ -9,6 +9,8 @@ function Toaster({ ...props }: ToasterProps) {
             theme="system"
             className="toaster group"
             position="bottom-right"
+            // Long enough to read after a slow action (e.g. "Sync live rates"); hover pauses it.
+            duration={6000}
             style={
                 {
                     '--normal-bg': 'var(--popover)',

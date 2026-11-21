@@ -1,8 +1,10 @@
-import { Head } from '@inertiajs/react';
+import { Head, Link } from '@inertiajs/react';
+import { ArrowLeft } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { ResendButton } from '@/components/admin/resend-button';
 import { StatusBadge } from '@/components/admin/status-badge';
 import Heading from '@/components/heading';
+import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { formatDateTime } from '@/lib/format';
 import { index } from '@/routes/admin/enquiries';
@@ -26,6 +28,14 @@ export default function EnquiryShow({ enquiry }: Props) {
         <>
             <Head title={`Enquiry #${enquiry.id}`} />
             <div className="flex flex-1 flex-col gap-6 p-4 md:p-6">
+                <div>
+                    <Button asChild variant="ghost" size="sm">
+                        <Link href={index()}>
+                            <ArrowLeft />
+                            Back to enquiries
+                        </Link>
+                    </Button>
+                </div>
                 <div className="flex flex-wrap items-start justify-between gap-4">
                     <Heading
                         title={`Enquiry #${enquiry.id}`}

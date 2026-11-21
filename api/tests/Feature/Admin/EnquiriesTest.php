@@ -51,13 +51,22 @@ final class EnquiriesTest extends AdminTestCase
                 ->where('filters.status', 'failed'));
     }
 
-    public function test_an_invalid_filter_is_a_validation_error(): void
+    /** Invalid filters are ignored (all statuses, page 1), never a redirect to an unrelated page (QA B5). */
+    public function test_invalid_filters_are_ignored(): void
     {
-        $this->actingAs($this->admin())
-            ->from('/admin/enquiries')
-            ->get('/admin/enquiries?status=archived')
-            ->assertRedirect('/admin/enquiries')
-            ->assertSessionHasErrors('status');
+        Enquiry::factory()->count(2)->create();
+        $this->actingAs($this->admin());
+
+        foreach (['status=archived', 'status[]=failed', 'page=abc', 'page=-1', 'page=0', 'page=1.5', 'page=999999999', 'status=bogus&page=x'] as $query) {
+            $this->from('/admin/enquiries/3')
+                ->get("/admin/enquiries?{$query}")
+                ->assertOk()
+                ->assertInertia(fn (Assert $page) => $page
+                    ->component('enquiries/index')
+                    ->where('filters.status', null)
+                    ->where('enquiries.meta.current_page', 1)
+                    ->has('enquiries.data', 2));
+        }
     }
 
     public function test_the_detail_page_shows_only_the_listed_fields(): void

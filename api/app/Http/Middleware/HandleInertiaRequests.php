@@ -24,7 +24,7 @@ class HandleInertiaRequests extends Middleware
 
         return [
             ...parent::share($request),
-            'name' => 'Admin',
+            'name' => 'Product Catalogue Admin',
             'auth' => [
                 'user' => $user === null ? null : [
                     'id' => $user->id,

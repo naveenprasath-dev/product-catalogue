@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers\Admin;
 
 use App\Catalogue\CatalogueService;
+use App\Catalogue\Data\StoredEnquiry;
 use App\Catalogue\Exceptions\EnquiryNotResendable;
 use App\Catalogue\Exceptions\EnquiryNotSent;
 use App\Http\Controllers\Controller;
@@ -50,7 +51,8 @@ final class EnquiryController extends Controller
             $this->catalogue->resendEnquiry($enquiry);
             Inertia::flash('toast', ['type' => 'success', 'message' => 'Enquiry re-sent to the sales inbox.']);
         } catch (EnquiryNotResendable) {
-            Inertia::flash('toast', ['type' => 'warning', 'message' => 'Only failed enquiries can be re-sent.']);
+            $minutes = StoredEnquiry::STUCK_PENDING_MINUTES;
+            Inertia::flash('toast', ['type' => 'warning', 'message' => "Only failed enquiries, or pending ones older than {$minutes} minutes, can be re-sent."]);
         } catch (EnquiryNotSent) {
             // Already marked failed and logged (id only) by CatalogueService.
             Inertia::flash('toast', ['type' => 'error', 'message' => 'Still failing, try again later.']);

@@ -50,7 +50,7 @@ final class ResendEnquiryTest extends AdminTestCase
             ->from('/admin/enquiries')
             ->post("/admin/enquiries/{$enquiry->id}/resend")
             ->assertRedirect('/admin/enquiries')
-            ->assertInertiaFlash('toast.type', 'warning');
+            ->assertInertiaFlash('toast', ['type' => 'warning', 'message' => 'Only failed enquiries, or pending ones older than 5 minutes, can be re-sent.']);
 
         Mail::assertNothingSent();
     }

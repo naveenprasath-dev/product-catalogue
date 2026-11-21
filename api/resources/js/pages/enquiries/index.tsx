@@ -76,72 +76,117 @@ export default function EnquiriesIndex({ enquiries, filters }: Props) {
                         .
                     </p>
                 ) : (
-                    <div className="overflow-x-auto rounded-xl border">
-                        <table className="w-full text-sm">
-                            <thead className="bg-muted/50 text-left text-muted-foreground">
-                                <tr>
-                                    <th className="px-4 py-3 font-medium">
-                                        Received
-                                    </th>
-                                    <th className="px-4 py-3 font-medium">
-                                        Customer
-                                    </th>
-                                    <th className="px-4 py-3 font-medium">
-                                        Product
-                                    </th>
-                                    <th className="px-4 py-3 font-medium">
-                                        Status
-                                    </th>
-                                    <th className="px-4 py-3">
-                                        <span className="sr-only">Actions</span>
-                                    </th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {data.map((enquiry) => (
-                                    <tr
-                                        key={enquiry.id}
-                                        className="border-t hover:bg-muted/30"
-                                    >
-                                        <td className="px-4 py-3 whitespace-nowrap">
-                                            <Link
-                                                href={show(enquiry.id)}
-                                                className="font-medium underline-offset-4 hover:underline"
-                                            >
-                                                {formatDateTime(
-                                                    enquiry.created_at,
-                                                )}
-                                            </Link>
-                                        </td>
-                                        <td className="px-4 py-3">
-                                            <div>{enquiry.name}</div>
-                                            <div className="text-xs text-muted-foreground">
-                                                {enquiry.email}
-                                                {enquiry.customer_account &&
-                                                    ' · customer account'}
-                                            </div>
-                                        </td>
-                                        <td className="px-4 py-3">
-                                            {enquiry.product_title}
-                                        </td>
-                                        <td className="px-4 py-3">
-                                            <StatusBadge
-                                                status={enquiry.status}
+                    <>
+                        {/* Under sm: stacked cards so Status and Re-send are visible without sideways scrolling. */}
+                        <ul
+                            className="grid gap-3 sm:hidden"
+                            aria-label="Enquiries"
+                        >
+                            {data.map((enquiry) => (
+                                <li
+                                    key={enquiry.id}
+                                    className="grid gap-2 rounded-xl border p-4 text-sm"
+                                >
+                                    <div className="flex items-start justify-between gap-3">
+                                        <Link
+                                            href={show(enquiry.id)}
+                                            className="font-medium underline-offset-4 hover:underline"
+                                        >
+                                            {formatDateTime(enquiry.created_at)}
+                                        </Link>
+                                        <StatusBadge status={enquiry.status} />
+                                    </div>
+                                    <div>
+                                        <div>{enquiry.name}</div>
+                                        <div className="text-xs break-all text-muted-foreground">
+                                            {enquiry.email}
+                                            {enquiry.customer_account &&
+                                                ' · customer account'}
+                                        </div>
+                                    </div>
+                                    <div className="text-muted-foreground">
+                                        {enquiry.product_title}
+                                    </div>
+                                    {enquiry.resendable && (
+                                        <div>
+                                            <ResendButton
+                                                enquiryId={enquiry.id}
+                                                size="sm"
                                             />
-                                        </td>
-                                        <td className="px-4 py-3 text-right">
-                                            {enquiry.resendable && (
-                                                <ResendButton
-                                                    enquiryId={enquiry.id}
-                                                    size="sm"
-                                                />
-                                            )}
-                                        </td>
+                                        </div>
+                                    )}
+                                </li>
+                            ))}
+                        </ul>
+                        <div className="hidden overflow-x-auto rounded-xl border sm:block">
+                            <table className="w-full text-sm">
+                                <thead className="bg-muted/50 text-left text-muted-foreground">
+                                    <tr>
+                                        <th className="px-4 py-3 font-medium">
+                                            Received
+                                        </th>
+                                        <th className="px-4 py-3 font-medium">
+                                            Customer
+                                        </th>
+                                        <th className="px-4 py-3 font-medium">
+                                            Product
+                                        </th>
+                                        <th className="px-4 py-3 font-medium">
+                                            Status
+                                        </th>
+                                        <th className="px-4 py-3">
+                                            <span className="sr-only">
+                                                Actions
+                                            </span>
+                                        </th>
                                     </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
+                                </thead>
+                                <tbody>
+                                    {data.map((enquiry) => (
+                                        <tr
+                                            key={enquiry.id}
+                                            className="border-t hover:bg-muted/30"
+                                        >
+                                            <td className="px-4 py-3 whitespace-nowrap">
+                                                <Link
+                                                    href={show(enquiry.id)}
+                                                    className="font-medium underline-offset-4 hover:underline"
+                                                >
+                                                    {formatDateTime(
+                                                        enquiry.created_at,
+                                                    )}
+                                                </Link>
+                                            </td>
+                                            <td className="px-4 py-3">
+                                                <div>{enquiry.name}</div>
+                                                <div className="text-xs text-muted-foreground">
+                                                    {enquiry.email}
+                                                    {enquiry.customer_account &&
+                                                        ' · customer account'}
+                                                </div>
+                                            </td>
+                                            <td className="px-4 py-3">
+                                                {enquiry.product_title}
+                                            </td>
+                                            <td className="px-4 py-3">
+                                                <StatusBadge
+                                                    status={enquiry.status}
+                                                />
+                                            </td>
+                                            <td className="px-4 py-3 text-right">
+                                                {enquiry.resendable && (
+                                                    <ResendButton
+                                                        enquiryId={enquiry.id}
+                                                        size="sm"
+                                                    />
+                                                )}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </>
                 )}
 
                 {meta.last_page > 1 && (
