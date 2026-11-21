@@ -46,7 +46,7 @@ time lost) · **minor** (annoyance, quick fix). Status: **fixed** · **workaroun
 | 24 | 2026-11-21 | Admin re-send/sync toast disappeared before it was noticed | admin/ui | minor | fixed |
 | 25 | 2026-11-22 | One API test failed once, then passed in 13 runs (flaky, unidentified) | tests | minor | open |
 | 26 | 2026-11-22 | Search box collapsed to its icon in the signed-in header at ~1000px | ui | major | fixed |
-| 27 | 2026-11-22 | GitGuardian flagged the hard-coded test `APP_KEY` in `api/phpunit.xml` | security/tests | major | fixed (history: see entry) |
+| 27 | 2026-11-22 | GitGuardian flagged the hard-coded test `APP_KEY` in `api/phpunit.xml` | security/tests | major | fixed |
 
 ---
 
@@ -319,8 +319,9 @@ time lost) · **minor** (annoyance, quick fix). Status: **fixed** · **workaroun
   looked for real-looking keys.
 - **Fix:** Removed the key from `phpunit.xml`; `api/tests/bootstrap.php` now generates a random
   `APP_KEY` for each test run (235 tests green). No real key was ever committed (checked the full
-  history). The old test key still exists in the PR's earlier commits; the GitGuardian incident is
-  resolved by marking it as a test credential (or by rewriting history, which needs a force-push).
+  history). The PR branch history was then rewritten (`git filter-branch`, my decision) to remove the
+  test key from every earlier commit, verified (0 matches, final tree unchanged) and force-pushed with
+  a lease; GitGuardian now passes. Commit hashes on `feature/catalogue-poc` changed as a result.
 - **Prevention / lesson:** Never commit any key, even a dummy one: generate test keys at runtime.
   The pre-push secret scan in `git-workflow` should also match `base64:` keys in config files.
 - **Refs:** `api/phpunit.xml`, `api/tests/bootstrap.php`, `.claude/skills/laravel-testing/SKILL.md`.

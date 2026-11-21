@@ -53,6 +53,13 @@ Tool: Claude Code · Model: Claude Opus 5.5
     DECISIONS.md "Setup and demo data".
 17. Asked for a **separate agent to keep AI_LOG.md, DECISIONS.md and AI_USAGE.md up to date** while
     the setup agent works, so the write-up doesn't fall behind the code (my decision).
+18. GitGuardian flagged the hard-coded **test** `APP_KEY` in `api/phpunit.xml` on PR #1. Claude
+    replaced it with a key generated per test run, then I chose to **rewrite the PR branch history**
+    to remove the key from every commit (my decision); it was verified (0 matches, final code
+    unchanged) and force-pushed, and the check went green. The pre-push secret scan missed it
+    because it only matched real-looking keys; it now also matches `base64:` keys (ISSUES #27).
+19. Reported the header search collapsing to its icon when signed in at ~1000px (with a
+    screenshot); fixed and verified at 375–1440px (ISSUES #26).
 
 ## Where the AI got something wrong / I corrected it
 - **No login/logout for users.** The plan quietly listed "auth" as a cut and Claude never raised it as
