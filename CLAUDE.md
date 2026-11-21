@@ -59,7 +59,7 @@ not a throwaway prototype.
 - Small, reviewable steps. Explain non-obvious decisions in a short comment or in DECISIONS.md.
 - Use the project skills in `.claude/skills/` for those tasks: task skills (`api-endpoint`,
   `product-source`, `web-page`, `admin-page`, `catalogue-data`, `run-checks`, `pr-ready`,
-  `git-workflow`, `ai-log`) and convention skills (`laravel-backend`, `laravel-database`,
+  `git-workflow`, `ai-log`, `dev-issues`) and convention skills (`laravel-backend`, `laravel-database`,
   `laravel-testing`, `react-frontend`, `react-testing`). Run `run-checks` before
   calling anything done; run `ai-log` after notable decisions or AI mistakes.
 - In `api/`, Laravel Boost adds version-aware guidelines (`api/CLAUDE.md`), skills and the
