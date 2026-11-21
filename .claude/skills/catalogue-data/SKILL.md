@@ -11,7 +11,8 @@ description: Operate the local catalogue data - run or force catalogue:import, r
 | Import from the snapshot only (offline) | `docker compose exec api php artisan catalogue:import --source=file` |
 | Wipe everything and re-seed from scratch | `docker compose down -v && docker compose up --build` |
 | Re-run migrations and seed | `docker compose exec api php artisan migrate:fresh --seed` |
-| Inspect the DB | `docker compose exec db psql -U "$DB_USERNAME" -d "$DB_DATABASE" -c 'select count(*) from products;'` |
+| Inspect the DB | `docker compose exec db psql -U catalogue -d catalogue -c 'select count(*) from products;'` (the local defaults; with custom `DB_*` use `docker compose exec db sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "select count(*) from products;"'` so the variables expand inside the container, not in your host shell) |
+
 
 ## Refreshing the snapshot
 ```bash

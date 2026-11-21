@@ -18,6 +18,12 @@ not a throwaway prototype.
 - Email is sent only through Laravel Mail + the `EnquiryReceived` Mailable. Never hard-code
   a provider SDK; the provider is chosen by `MAIL_MAILER`.
 - Controllers stay thin: validation in FormRequests, logic in `CatalogueService`.
+- Shop sign-in uses Sanctum SPA cookie auth (session cookie + CSRF). Never store auth tokens in
+  `localStorage`/`sessionStorage`, and don't issue bearer tokens to the shop.
+- The current user's id always comes from the session (`$request->user()`), never from the request body.
+- `/admin` (Inertia + React starter kit, in `api/`) goes through the same services and repositories:
+  every admin route is behind `auth` + `can:admin`, controllers stay thin, admin styling uses the kit's
+  token classes and never touches `web/`.
 - `web/src/api/client.ts` is the only module that knows the API base URL.
 - Styling goes through CSS variables (theme tokens); no hard-coded brand colours in components.
 
@@ -33,7 +39,10 @@ not a throwaway prototype.
 ## Errors and security
 - Upstream failure during import → `CatalogueUnavailable` → fall back to the JSON snapshot (if enabled);
   if every source fails, the command exits 1 and the transaction is rolled back.
-- API errors are JSON with no stack traces; email send failure → 502.
+- API errors are JSON with no stack traces; email send failure → 502. JSON error rendering applies
+  only to `api/*` (or requests that expect JSON); `/admin` gets normal error pages.
+- Admin controllers catch domain exceptions (`EnquiryNotSent`, `EnquiryNotResendable`) and flash a
+  toast; the API's 502 JSON must never reach an admin page.
 - Validate all input server-side; client validation is UX only.
 - Escape user input in emails. Rate-limit `POST /enquiries`.
 
@@ -45,9 +54,13 @@ not a throwaway prototype.
 - Don't mark work done until the tests pass.
 
 ## Working style
+- Git: `main` holds only the empty initial commit; all work goes on `feature/catalogue-poc` and
+  reaches `main` through the PR. Ask before pushing (the repo is public).
 - Small, reviewable steps. Explain non-obvious decisions in a short comment or in DECISIONS.md.
-- Use the project skills in `.claude/skills/` (`api-endpoint`, `product-source`, `web-page`,
-  `catalogue-data`, `run-checks`, `pr-ready`, `ai-log`) for those tasks. Run `run-checks` before
+- Use the project skills in `.claude/skills/` for those tasks: task skills (`api-endpoint`,
+  `product-source`, `web-page`, `admin-page`, `catalogue-data`, `run-checks`, `pr-ready`,
+  `git-workflow`, `ai-log`) and convention skills (`laravel-backend`, `laravel-database`,
+  `laravel-testing`, `react-frontend`, `react-testing`). Run `run-checks` before
   calling anything done; run `ai-log` after notable decisions or AI mistakes.
 - In `api/`, Laravel Boost adds version-aware guidelines (`api/CLAUDE.md`), skills and the
   `laravel-boost` MCP server (needs `docker compose up`). Use its `search-docs` tool before relying

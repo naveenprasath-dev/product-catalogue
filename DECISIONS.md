@@ -1,8 +1,17 @@
 # Decisions & Assumptions
 
 ## Stack choice
-- **Client: React + TypeScript (Vite).** _TODO: final reasoning_
-- **Backend: Laravel (PHP 8.4), used as an API only.**
+- **Client: React + TypeScript (Vite).**
+  - **Quickest for a reviewer to run:** a web app needs only a browser, no simulator or device
+    (PLAN.md §1), and the Vite dev server runs in the same `docker compose up`.
+  - **TypeScript is preferred by the brief,** and strict types at the API boundary (`api/types.ts`
+    mirrors the PLAN.md contract) catch contract drift at compile time.
+  - **Look and feel will change:** plain CSS variables (`tokens.css`) keep a rebrand to one file,
+    with no CSS framework to fight.
+  - **Small surface:** React Router is the only runtime dependency beyond React; `fetch` is wrapped
+    in one `client.ts`.
+- **Backend: Laravel (PHP 8.4), used as a JSON API (plus the `/admin` panel added in phase 2).**
+
   - **Fast to build.** Routing, validation, ORM, migrations, mail, HTTP client, rate limiting, CORS,
     console commands and testing helpers all come with the framework. In a 2–3 hour time-box, the
     time goes into the catalogue logic instead of wiring libraries together.
@@ -21,7 +30,7 @@
     | Code style | Pint | Yes |
     | Background mail | Queues (database → SQS driver) | Next step |
     | Scheduled re-sync | Task scheduler | Next step |
-    | API auth / admin | Sanctum | Later |
+    | API auth / admin | Sanctum, Fortify | Yes (phase 2: shop login + `/admin`) |
     | Better search | Scout (database driver → Meilisearch/Typesense) | Later |
     | Production speed | Octane | Later |
     | Debugging / monitoring | Telescope, Pulse | Later |
@@ -40,9 +49,9 @@
 | Area | Assumption | Why |
 |---|---|---|
 | Home "top rated" | The owner curates 5 product IDs in config (`FEATURED_PRODUCT_IDS`); they are not computed | "I have chosen" implies a manual choice |
-| Category "top rated" | Top 3 by `rating.rate` within the category; the rest are "additional" | _TODO_ |
-| Search | Case-insensitive substring over title, description and category, done server side | _TODO_ |
-| Enquiry form | Name + email required; phone + message optional | _TODO_ |
+| Category "top rated" | Top 3 by `rating.rate` within the category; the rest are "additional" | The brief gives no rule, and the data has a rating per product; 3 gives a clear "top" section in categories of 4–6 items. The count is one config value (`top_rated_per_category`) |
+| Search | Case-insensitive substring over title, description and category, done server side | Simple and predictable for 20 products; server side so the client stays thin and a real search engine (Scout) can replace it later without changing the client |
+| Enquiry form | Name + email required; phone + message optional | Sales needs a name and a way to reply; anything more adds friction. The product is attached automatically |
 | Sales inbox | `SALES_INBOX_ADDRESS` env var; Mailpit locally | No paid accounts allowed |
 | Email failure | Show an error and allow a retry; no "Thank you" | Don't tell the customer it worked if it didn't |
 | Database | PostgreSQL 16 in Docker, storing the catalogue and enquiries (`status`: pending/sent/failed) | No enquiry is lost if email fails; same engine as a likely RDS production setup |
@@ -52,16 +61,44 @@
 | Runtime | Everything containerised (web, api, db, mailpit) via `docker compose up --build` | Reviewer needs only Docker; no local PHP/Node/Postgres versions to match |
 
 ## Dropped or simplified
-- _TODO_
+- **Customer confirmation email**: only the sales inbox is emailed.
+- **Cart, checkout and shop pagination**: 20 products don't need them; the brief is enquiry-based.
+- **Scheduled re-sync**: the import runs on first start or by hand (`catalogue:import`).
+- **Products that vanish upstream** are kept, not removed or hidden (enquiries reference them).
+- **Images** stay hot-linked to fakestoreapi.com, so the offline snapshot shows no images.
+- **Mail is synchronous** (no queue); a failure is stored as `failed` and the client shows a retry.
+- **Auth is minimal** (phase 2): no password reset UI or email verification; admin passwords are
+  reset with `php artisan admin:create --email=… --reset`. No 2FA, passkeys or admin registration.
+- **Admin panel scope**: dashboard, enquiries list/detail and re-send only. No product editing, no
+  import trigger, featured products still come from `FEATURED_PRODUCT_IDS` (ADMIN_PLAN §9).
+- **Runtime**: `php -S` and the Vite dev server, file sessions and cache; fine locally, not for production.
 
 ## How the design grows beyond the PoC
-- _TODO_
+- **New product source** (supplier API, PIM, CSV): a new `ProductSource` implementation bound in
+  `CatalogueServiceProvider`; the importer, API and client don't change.
+- **New email provider**: `MAIL_MAILER` (e.g. `ses`); content stays in `EnquiryReceived`.
+- **Rebrand**: edit `web/src/styles/tokens.css` (shop) or `api/resources/css/app.css` (admin).
+- **Scale**: the read model is already Postgres behind `ProductRepository`, so the API never depends
+  on upstream at request time; queue mail (`ShouldQueue`, database then SQS), schedule the import,
+  swap search to Scout, run on ECS/RDS/S3 + CloudFront (README → Production path).
+- **Admin features**: each is a `CatalogueService` use case behind a thin Admin controller
+  (`admin-page` skill). Planned next: import trigger, featured products in the DB, read-only product
+  browse; later, product editing through a `product_overrides` table so imports never overwrite edits.
+- **Customer features**: "My enquiries" (`enquiries.user_id` already exists), password reset via
+  Fortify + Mail, email verification. Roles: a `role` enum replaces `is_admin` if more than two
+  kinds of user appear.
 
 ## Next, with another day
 - Run `catalogue:import` on a schedule (Laravel scheduler / ECS scheduled task) instead of only at start.
 - Mark products that vanish upstream as inactive (`is_active`) instead of keeping them visible.
 - Download product images during import (local/S3 storage) so the offline snapshot shows images too.
-- _TODO_
+- Queue the enquiry email (`ShouldQueue` + the `database` queue driver), so a slow SMTP server
+  doesn't slow the request.
+- Admin: trigger `catalogue:import` from the panel (through `CatalogueService`, queued), and move
+  featured products into a `featured_products` table (ADMIN_PLAN §9).
+- Shop: a "My enquiries" page and password reset (ADMIN_PLAN §19d).
+- Vitest + RTL tests for the admin pages (today they are covered by `assertInertia` feature tests,
+  `tsc` and `vp check`).
 
 ## Why I added Claude Code project skills (`.claude/skills/`)
 CLAUDE.md says **what** must always be true (the rules). Skills say **how** to do a recurring task in
@@ -98,7 +135,14 @@ Laravel's first-party AI tooling. Added so the agent writes Laravel 13 code that
 |---|---|---|
 | Version-aware guidelines | `api/CLAUDE.md` (generated, loaded when working in `api/`) | Laravel/PHPUnit/Pint conventions for the versions in `composer.lock` |
 | Skills | `api/.claude/skills/` (`laravel-best-practices`, `testing-best-practices`, `infer-conventions`) | Sit alongside our own skills; ours cover this project's architecture, Boost's cover general Laravel practice |
-| MCP server (`boost:mcp`) | root `.mcp.json`, run **inside the api container** (`docker compose exec -T api php artisan boost:mcp`) | Lets the agent read the real DB schema, routes, config, logs and search version-matched Laravel docs |
+| MCP server (`boost:mcp`) | root `.mcp.json`, run **inside the api container** (`docker compose exec -T api php artisan boost:mcp`); `api/.mcp.json` is Boost's in-container variant | Lets the agent read the real DB schema, routes, config, logs and search version-matched Laravel docs |
+
+**Kept (user decision), `laravel/boost` 2.10.4:**
+
+| Decision | Why | Boundaries |
+|---|---|---|
+| Keep Laravel Boost as a dev dependency | Fits the AI-native brief, and the agent is more accurate on the installed Laravel APIs (version-matched docs and guidelines instead of model memory) | The root CLAUDE.md rules take precedence over Boost's generic guidelines (project overrides live in `api/.ai/guidelines/`). It is `require-dev`, so never installed in production, and it registers its MCP server and routes (e.g. `/_boost/browser-logs`) only in a local environment (or with `APP_DEBUG=true`, which stays `false` here). Generated files (`api/CLAUDE.md`, `api/.claude/skills/`, `api/boost.json`) are not hand-edited |
+
 
 Choices made during install:
 - **Laravel Cloud turned off** (`boost.json`: `"cloud": false`, `deploying-to-cloud` skill removed).
@@ -129,6 +173,19 @@ Choices made during install:
 | Enquiry pre-fill | Name/email are filled from the signed-in user once per user (also when the session resolves after the form mounted), never overwriting typed values, and stay editable. No user id is sent; the API takes it from the session | ADMIN_PLAN §19d |
 | Logout failure | A failed logout (non-401) keeps the user signed in and shows an inline alert in the header; a 401 counts as already logged out | Don't show a guest header while the server session still exists |
 | Auth tests | MSW defaults: `me` → 401, `csrf-cookie` → 204 that sets `document.cookie` (MSW doesn't write cookies under Node), `signedIn()` helper; `XSRF-TOKEN` cleared after each test. `credentials: 'include'` is checked with a pass-through `vi.spyOn(fetch)` because MSW's intercepted `Request` drops `credentials` | Existing page tests stay unchanged and guest-only |
+| UI redesign | Modern e-commerce look on the existing CSS-variables approach: tokens.css holds a neutral palette, one indigo accent, success/danger/badge/star colours, type scale, radii, shadows and motion tokens; light + dark (`prefers-color-scheme`) with AA text contrast; system font stack. No CSS framework, font or icon dependency | Stays within "theme tokens only, no new deps"; a rebrand is still one file |
+| Icons | Small inline SVG components in `components/icons/` (search, user, star, chevron, arrow, bag), `aria-hidden`, `currentColor` | Six icons don't justify an icon library |
+| Product card | The title link is stretched over the card with `::after`, so the whole card is clickable while the link's accessible name stays the title; the card shows the focus ring via `:focus-within`. Images sit in a square box on `--color-media-bg` with `object-fit: contain` + `mix-blend-mode: multiply` so white-background photos blend in | Avoids a link wrapping the whole card (a long, noisy accessible name) |
+| "Top rated" badge | Shown on featured products (home) and on a category's `top_rated` section, never on "More products" or search results | Only where the API says a product is top rated; no invented labels |
+| Star rating | Five SVG stars with a clipped overlay for partial stars; the group is `role="img"` with the label "Rated 4.7 out of 5 from 500 reviews"; the visible number stays as well | Rating is not conveyed by colour alone |
+| Categories request | `Layout` loads categories once and shares them with the header nav, home tiles and footer (`<Outlet context>` + `useCategories()`) | One request instead of three |
+| Skeletons | Grids and the product page show skeleton cards while loading; the wrapper keeps `role="status"` with a visually hidden label, the shapes are `aria-hidden` | Modern feel without losing the accessible loading message |
+| Home page h1 | "Discover our top rated picks" (hero), sections "Shop by category" and "Featured products" | The page is still the top-rated landing page from PLAN.md |
+| Product page | Breadcrumb Home › Category › Product; the category link lives only in the breadcrumb. The "Enquire about this product" CTA jumps to the form card (`#enquiry`, heading "Ask our sales team"). The image column is sticky from 900px | Enquiry stays on the product page (earlier decision) |
+| Mobile header | At ≤ 480px the brand shows only the logo icon, and the account area is one 44px user-icon link (guest) or the avatar + Log out (signed in). The wordmark, "Log in" and "Hi, name" become visually hidden, so they remain the accessible names. Register is hidden; "Create an account" stays in the footer and on /login. These rules sit at the end of global.css so they win the cascade. Checked in Playwright at 320/375/414px with bounding-box overlap checks (brand vs account vs search: no overlap, one row, no horizontal overflow) | The first version's `display: none` lost to `.button` later in the file, and the wordmark overlapped the account area |
+| Reduced motion | `prefers-reduced-motion` sets the motion tokens to 0 and turns off animations/transitions (shimmer, lift, smooth scroll) | Accessibility |
+| Footer | Real links only: Home, Search, the categories from the API, Log in/Create an account (or "Signed in as …") | No invented policies, shipping or trust claims |
+| Vite file watching | `server.watch.usePolling` (300ms) in `vite.config.ts` | `web/` is bind-mounted into Docker; on macOS, host file events don't reach the container, so the dev server kept serving stale modules |
 
 Web dependencies (all pinned by `package-lock.json`): `react-router` (routing; the only runtime addition);
 dev: `vitest` (test runner, shares Vite config), `jsdom` (DOM for tests), `@testing-library/react`,
@@ -141,9 +198,8 @@ and readable DOM assertions), `msw` (mock the API at the network level so the re
 | Area | Decision | Why |
 |---|---|---|
 | Laravel version | Laravel 13 (latest stable at scaffold time), PHP `^8.4`; images pinned (`php:8.4.28-cli-bookworm`, `postgres:16.16-alpine`, `axllent/mailpit:v1.34.0`, `composer:2.11.2`) | Versions must not float |
-| API-only skeleton | Removed the default users/cache/jobs migrations, `User` model, web routes, Vite/npm files and the storage-serving route; routes are registered with `api:` only (no `install:api`, so no Sanctum) | Nothing in the PoC needs auth, DB cache/sessions or queues; fewer moving parts and no extra dependency |
+| API-only skeleton | Removed the default users/cache/jobs migrations, `User` model, web routes, Vite/npm files and the storage-serving route; routes are registered with `api:` only (no `install:api`, so no Sanctum) | Nothing in the first PoC needed auth, DB cache/sessions or queues. Phase 2 added `users`, Sanctum, Fortify and `routes/web.php` back for shop login and `/admin` (rows below) |
 | Env files | Single root `.env.example`; `api/.env.example` removed. Compose passes every var to the api container explicitly, with defaults, so `docker compose up` also works without a `.env` | One place for config; CLAUDE.md "every env var into .env.example" |
-| `APP_KEY` | Empty in `.env.example`; the api entrypoint generates an ephemeral key per start when unset | The API is stateless (no sessions/cookies/encryption), so nothing depends on key stability, and no key is committed |
 | Default featured ids | `FEATURED_PRODUCT_IDS=12,11,3,18,5` = the five highest-rated items in the Fake Store data (4.8, 4.8, 4.7, 4.7, 4.6) | A sensible owner choice until they curate their own |
 | Non-env tunables | Fake Store timeout (10s) and retries (2), `top_rated_per_category` (3) and the enquiry rate limit (5/min per IP) are plain values in `config/catalogue.php`, not env vars | Keeps the env surface to what TECH_STACK.md §8 lists; promote to env vars if ops need to change them |
 | `ProductSource::origin()` | Sources report a label (`fakestore`, `snapshot`, `snapshot (fakestore unavailable)`) used in the import summary | The command can say where the data came from without knowing which classes are wired |
@@ -155,14 +211,13 @@ and readable DOM assertions), `msw` (mock the API at the network level so the re
 | Mail failure | Any exception while sending marks the enquiry `failed`, logs the enquiry id only (no personal data), returns 502 `{ "message": … }` | PLAN.md: record kept, UI shows retry |
 | Product id route | `/products/{id}` only matches 1–18 digits; anything else is a 404 | Avoids bigint overflow errors reaching Postgres; non-numeric ids 404 without a trace |
 | Search | `whereLike` with `%`/`_` escaped so they match literally; results ordered by title | Users searching "50%" should not match everything |
-| Errors | Every response from the app renders as JSON (not just `api/*`): 404 → `{ "message": "Not found." }` | API-only app; no HTML error pages anywhere |
 | Phase 2 packages | `laravel/sanctum ^4.0` (4.5.0), `laravel/fortify ^1.37.2` (1.43.0, pulls in `laravel/passkeys` 0.3.0, unused), `inertiajs/inertia-laravel ^3.0` (3.7.0), `laravel/wayfinder ^0.1.14` (0.1.23), with constraints matching the starter kit's composer.json, locked by composer.lock | Admin panel (kit port) + shop cookie auth; installed in one step so both agents built against the same lock |
 | Users | One `users` table (`is_admin` default false, **not fillable**), no `password_reset_tokens`/`sessions` tables. `enquiries.user_id` nullable FK, `nullOnDelete`, indexed | Customers and admins differ only by a flag; reset is CLI-only; file sessions |
-| APP_KEY (supersedes "ephemeral key") | Entrypoint: an env `APP_KEY` wins; otherwise read/generate `storage/app/.app-key` once (gitignored, in `.dockerignore`) | Sessions and remember cookies are encrypted, so the key must survive restarts. `docker compose exec api php artisan …` doesn't see the exported key (tests have their own) |
+| APP_KEY | Entrypoint: an env `APP_KEY` wins; otherwise read/generate `storage/app/.app-key` once (gitignored, in `.dockerignore`) | Sessions and remember cookies are encrypted, so the key must survive restarts. `docker compose exec api php artisan …` doesn't see the exported key (tests have their own) |
 | Sessions | `SESSION_DRIVER=file`, path `/`, no domain (host-only `localhost` cookie), `lax`; phpunit keeps `array` | Shared by `/admin` and the shop (user decision 9: one session) |
 | Stateful API | `$middleware->statefulApi()` + `SANCTUM_STATEFUL_DOMAINS=localhost:5173`. CORS `supports_credentials: true`, paths `api/*` + `sanctum/csrf-cookie`, origin still only `CORS_ALLOWED_ORIGIN` | Only the shop origin gets a session + CSRF; curl/other origins stay stateless and cookie-free (`StatelessApiTest`) |
 | Cookie auth only | `Sanctum::getAccessTokenFromRequestUsing(fn () => null)` | No `personal_access_tokens` table; a stray `Authorization: Bearer` header must give 401, not a SQL error |
-| Errors (supersedes "every response is JSON") | JSON only when `api/*` or `expectsJson()`; the JSON 404 renderer follows the same rule; `/admin` gets Laravel's normal (debug-off) pages. `EnquiryNotFound` maps to a 404 | Admin is a web app; API behaviour is unchanged (`ErrorResponsesTest`) |
+| Errors | JSON only when `api/*` or `expectsJson()`; the JSON 404 renderer follows the same rule; `/admin` gets Laravel's normal (debug-off) pages. `EnquiryNotFound` maps to a 404 | Admin is a web app; API behaviour is unchanged (`ErrorResponsesTest`) |
 | Shop auth endpoints | `/api/v1/auth/{register,login,logout,me}`; thin `Api\AuthController` + `App\Auth\AuthService` on the `web` guard; limits `shop-register` 3/min/IP, `shop-login` 5/min per email+IP; emails lower-cased | ADMIN_PLAN §19(b). Kept out of `CatalogueService` (auth isn't catalogue logic) |
 | No `guest` middleware on register/login | Dropped | Laravel's `RedirectIfAuthenticated` answers a JSON client with a 302 to `/`; logging in again just re-authenticates |
 | Register/login without a session → 403 | `authorize()` = `hasSession()` in the FormRequests | Cookie auth can't work without a session (non-shop origin); a clear 403 beats a 500 "session store not set" |
@@ -183,8 +238,9 @@ and readable DOM assertions), `msw` (mock the API at the network level so the re
 | Shared props | `auth.user` is `{id, name, email}` only; enquiry props go through `Admin\EnquiryResource`, and the detail prop is `resolve()`d (no `data` wrapper) | No `is_admin`/hashes/raw columns reach the browser |
 | Re-send result | Controller catches `EnquiryNotResendable` (warning toast) and `EnquiryNotSent` (error toast "Still failing, try again later") and redirects back; flash via `Inertia::flash('toast', …)` → kit's `useFlashToast` + sonner. Route throttled 6/min; logs enquiry id + admin id only | The global 502 JSON renderer is for the API; the admin sees a toast, not an error page |
 | Theming | Kit shadcn tokens in `api/resources/css/app.css` plus `--success`/`--warning` for status badges; copied components had raw palette classes (`text-red-600`, `bg-neutral-200`, …) replaced by tokens. Follows the system light/dark setting | CLAUDE.md token rule; admin and shop styles stay separate |
-| Admin toolchain | TS ~5.7 + `vp check` (kit) in `api/`, separate from web's TS 6.0 + ESLint. `vp fmt` ignores Markdown/JSON/PHP-owned paths so it only formats the admin front-end | Kept apart on purpose (ADMIN_PLAN §17) |
+| Admin toolchain | TS `^5.7.2` (resolved 5.9.3) + `vp check` (kit)
+ in `api/`, separate from web's TS 6.0 + ESLint. `vp fmt` ignores Markdown/JSON/PHP-owned paths so it only formats the admin front-end | Kept apart on purpose (ADMIN_PLAN §17) |
 | Node in the api image | `node:22.22.0-bookworm-slim` binaries copied into the api image; `npm ci` in the image and the entrypoint; the entrypoint rebuilds `public/build` only when it is missing or older than `resources/js`, `resources/css`, `routes/web.php`, `package-lock.json` or `vite.config.ts` | Wayfinder's Vite plugin runs `php artisan wayfinder:generate`, so PHP and Node must share a container |
 | `.npmrc` `ignore-scripts=true` | Kept from the kit | No install scripts run from dependencies |
 | `admin:create` | `--from-env` (entrypoint, idempotent, never resets), `--email=x` (hidden prompt), `--email=x --reset`; min 12 characters; password never printed or logged | User decisions 3 and 7 |
-| CSRF 419 test | Not covered by a feature test: Laravel skips CSRF verification while running unit tests | Covered by the framework's `web` group; noted rather than faked |
+| CSRF 419 test | Laravel skips CSRF verification while running tests, so `StatefulCsrfTest` swaps Sanctum's `validate_csrf_token` middleware for a subclass that always enforces it, and asserts the 419 / accepted cases for shop-origin requests | Tests the real Sanctum stateful path instead of trusting it |

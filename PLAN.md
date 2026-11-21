@@ -4,22 +4,26 @@ Source brief: "Code Challenge: AI-Native Engineer". Time-box: 2–3 hours.
 Goal: a small, well-reasoned PoC that is a **foundation, not a throwaway**. The data
 source, look and feel, and email provider are all expected to change.
 
+Phase 2 (shop customer login + the `/admin` panel) is planned in detail in [ADMIN_PLAN.md](ADMIN_PLAN.md);
+this file is updated to match what was built.
+
 ## 1. Stack
 
 | Layer | Choice | Why |
 |---|---|---|
 | Client | React + TypeScript (Vite) | Quickest for a reviewer to run (no simulator needed); TS is preferred in the brief |
-| Backend | Laravel (latest), PHP 8.4, used as an API only | Its service container, Mail drivers, Http client, FormRequests and API Resources each provide a swap point for one of the things expected to change |
+| Backend | Laravel 13, PHP 8.4, a JSON API (+ the `/admin` panel, phase 2) |
+ Its service container, Mail drivers, Http client, FormRequests and API Resources each provide a swap point for one of the things expected to change |
 | Database | PostgreSQL 16, runs in Docker | Holds the catalogue (imported from Fake Store on first launch, with a committed JSON snapshot as fallback) and every enquiry. Laravel's DB layer keeps the engine swappable (`DB_CONNECTION`); maps directly onto AWS RDS later |
 | Local email | Mailpit (SMTP), runs in Docker | Free, no account needed; the reviewer sees the "sales inbox" at http://localhost:8025 |
-| Tests | PHPUnit/Pest (api), Vitest + React Testing Library (web) | Covers the critical path; both run inside their containers |
+| Tests | PHPUnit (api), Vitest + React Testing Library (web) | Covers the critical path; both run inside their containers |
 | Run | `docker compose up --build` — **everything is containerised** (web, api, db, mailpit) | Brief asks for 1–2 commands, < 10 minutes; the reviewer needs only Docker, no local PHP/Node/Postgres |
 
 ## 2. Repo layout
 
 ```
 product-catalogue/
-├── api/                 Laravel, API only (+ Dockerfile, entrypoint: migrate → import → serve)
+├── api/                 Laravel: JSON API + /admin panel (+ Dockerfile, entrypoint: migrate → import → admin:create/build → serve)
 ├── web/                 React + TS (Vite) (+ Dockerfile)
 ├── docker/postgres/     init.sql (creates the test database)
 ├── docker-compose.yml   web + api + db (postgres) + mailpit
@@ -30,6 +34,7 @@ product-catalogue/
 ├── TECH_STACK.md        every language, framework, service and tool, and why
 ├── README.md
 ├── DECISIONS.md
+├── ADMIN_PLAN.md        phase 2 plan: admin panel + shop login
 └── AI_USAGE.md          (built from AI_LOG.md)
 ```
 
@@ -68,20 +73,33 @@ app/
 │   ├── Import/CatalogueImporter.php         source → upsert categories + products (one transaction)
 │   ├── Exceptions/CatalogueUnavailable.php  source unreachable/invalid during import
 │   └── CatalogueService.php                 featured(), categoryListing(), search(), submitEnquiry()
+│   (phase 2 additions: Contracts/EnquiryRepository, Data/{StoredEnquiry,DashboardStats,EnquiryData,…},
+│    Exceptions/{EnquiryNotFound,EnquiryNotResendable,EnquiryNotSent}; CatalogueService also has
+│    dashboardStats(), enquiries(), enquiry(), resendEnquiry() for the admin panel)
+├── Auth/AuthService.php                     shop register/login/logout on the web guard
 ├── Console/Commands/ImportCatalogue.php     php artisan catalogue:import
+├── Console/Commands/CreateAdmin.php         php artisan admin:create [--from-env | --email=x [--reset]]
 ├── Http/
-│   ├── Controllers/Api/{Product,Category,Enquiry}Controller.php   (thin)
-│   ├── Requests/StoreEnquiryRequest.php
-│   └── Resources/ProductResource.php
+│   ├── Controllers/Api/{Product,Category,Enquiry,Auth}Controller.php   (thin)
+│   ├── Controllers/Admin/{Dashboard,Enquiry}Controller.php            (thin, Inertia)
+│   ├── Middleware/HandleInertiaRequests.php
+│   ├── Requests/{StoreEnquiry,SearchProducts}Request.php, Auth/{Login,Register}Request.php,
+│   │   Admin/ListEnquiriesRequest.php
+│   └── Resources/{Product,Category,CategoryListing,Enquiry,User}Resource.php,
+│       Admin/{Enquiry,DashboardStats}Resource.php
 ├── Mail/EnquiryReceived.php
-├── Models/{Category,Product,Enquiry}.php
+├── Models/{Category,Product,Enquiry,User}.php
 └── Providers/CatalogueServiceProvider.php   binds ProductSource (per CATALOGUE_SOURCE / fallback flag) + ProductRepository
+    Providers/FortifyServiceProvider.php     admin-only login (is_admin), no Fortify routes
 config/catalogue.php                         source, source_url, fallback_to_file, snapshot_path, featured_ids,
                                              top_rated_per_category, sales_inbox
+config/{admin,sanctum,cors,fortify,session}.php   admin toggle + bootstrap, stateful shop origin, CORS with credentials
+routes/api.php, routes/web.php               /api/v1 (+ /auth/*); /admin (only when ADMIN_ENABLED=true)
+resources/js/                                admin front-end (Inertia + React, pages dashboard / enquiries / auth/login)
 database/
 ├── data/fakestore-products.json             committed snapshot of GET /products (offline/fallback source)
-├── migrations/                              categories, products, enquiries
-├── factories/{Category,Product}Factory.php  for tests (tests never use the real import)
+├── migrations/                              categories, products, enquiries, users, enquiries.user_id
+├── factories/{Category,Product,Enquiry,User}Factory.php  for tests (tests never use the real import)
 └── seeders/DatabaseSeeder.php               calls catalogue:import, so `migrate --seed` also works
 ```
 
@@ -157,8 +175,16 @@ enquiries
   message        text           nullable (max 2000 enforced in StoreEnquiryRequest)
   status         varchar(20)    pending | sent | failed (default pending)
   mailed_at      timestamptz    nullable
+  user_id        bigint FK → users.id   nullable, nullOnDelete, indexed (set from the session, never the body)
   created_at / updated_at
   index (status, created_at)
+
+users                            shop customers and admins in one table
+  id             bigserial PK
+  name, email (unique), password (hashed), remember_token
+  is_admin       boolean        default false, not mass-assignable
+  created_at / updated_at
+  (no password_reset_tokens / sessions tables: reset is CLI-only, sessions are files)
 ```
 
 Enquiry flow in `CatalogueService`: save as `pending` → send `EnquiryReceived` → mark `sent`
@@ -232,15 +258,21 @@ Errors are always JSON: 404/429/502 → `{ "message": "…" }`; 422 → Laravel'
 - Consistent JSON errors, no stack traces; `APP_DEBUG=false` in `.env.example`.
 - Search uses Laravel's `whereLike` (case-insensitive, parameter-bound) — no raw SQL, no
   engine-specific `ILIKE` in app code.
-- `CACHE_STORE=file`, `SESSION_DRIVER=array` (stateless API; no DB-backed cache/sessions needed).
+- `CACHE_STORE=file`, `SESSION_DRIVER=file` (no DB-backed cache/sessions). Stateless for non-shop
+  callers; the shop origin (`SANCTUM_STATEFUL_DOMAINS`) and `/admin` get a cookie session + CSRF.
 - DB credentials only via env vars (`DB_*` in `.env.example` with local-only defaults).
 - Mail sent synchronously for the PoC (`ShouldQueue` + the `database` queue driver, then SQS, is the next step).
 
 ## 5. Frontend (`web/`)
-- Pages: Home (featured), Category (top rated + others), Search results, Product detail,
-  Enquiry form, then Thank-you message.
-- `src/api/client.ts` is the only module that knows the API URL (`VITE_API_URL`).
-- Components: `ProductTile`, `ProductGrid`, `SearchBar`, `EnquiryForm`, `CategoryNav`.
+- Pages: Home (featured), Category (top rated + others), Search results, Product detail with the
+  enquiry form on the same page (no separate enquiry route; "Thank you" replaces the form),
+  Login (`/login`), Register (`/register`), NotFound.
+- `src/api/client.ts` is the only module that knows the API URL (`VITE_API_URL`); it sends
+  `credentials: 'include'` and the Sanctum CSRF header.
+- Auth: `src/auth/` (`AuthProvider` + `useAuth()`, safe `?next=` redirects). The header's account
+  menu (`UserMenu`) shows Log in / Register for guests, the name + Log out when signed in. The enquiry
+  form is pre-filled for signed-in users; guests enquire as before.
+- Components: `ProductTile`, `ProductGrid`, `SearchBar`, `EnquiryForm`, `CategoryNav`, `UserMenu`, `Footer`.
 - Loading, empty and error states on every page.
 
 ## 6. Assumptions (expanded in DECISIONS.md)
@@ -256,7 +288,7 @@ Errors are always JSON: 404/429/502 → `{ "message": "…" }`; 422 → Laravel'
 | Product data | Imported into Postgres from Fake Store on first launch; the API never calls Fake Store at request time |
 | Fake Store down on first launch | Import falls back to the committed JSON snapshot and says so in the log, so `docker compose up` still gives a working shop |
 | Every source fails | api container exits with a clear error and compose restarts it (`restart: on-failure`) — better than serving an empty shop silently |
-| Cuts | Customer confirmation email, auth, cart, pagination, admin UI, scheduled re-sync, removing products that vanish upstream |
+| Cuts | Customer confirmation email, password reset UI and email verification (admin reset is CLI-only), product editing in admin, an import trigger in admin, featured products managed in the DB (still `FEATURED_PRODUCT_IDS`), cart, shop pagination, scheduled re-sync, removing products that vanish upstream |
 
 ## 7. Tests
 
@@ -280,6 +312,20 @@ data from `Category`/`Product` factories; `Mail::fake()` for mail; `Http::fake()
 | `StoreEnquiryTest` | valid → 201, row stored as `sent` with `mailed_at`, `EnquiryReceived` sent to `SALES_INBOX_ADDRESS` with product title; mail transport throws → row `failed`, 502 JSON; missing name/email, bad email, message > 2000 → 422 with field errors, no row, no mail; unknown `product_id` → 422; honeypot filled → silently accepted, no row, no mail; throttle → 429 after the limit; HTML in name/message is escaped in the rendered mail |
 | `ImportCatalogueCommandTest` | imports products + categories from faked Fake Store JSON (the snapshot file is the fixture); second run → no duplicates and changed price/rating updated; `--if-empty` skips when products exist; upstream 500 / timeout / invalid JSON with fallback on → imports from snapshot, output says so; `CATALOGUE_SOURCE=file` / `--source=file` → imports with no HTTP request made; snapshot import then live import → same rows updated, no duplicates; fallback off + upstream down → exit 1, DB unchanged; upstream down + snapshot missing/invalid → exit 1, DB unchanged (transaction rolled back) |
 | `ErrorResponsesTest` | unknown route → JSON 404; `APP_DEBUG=false` → no trace in error bodies; CORS header only for the configured web origin |
+| `StatelessApiTest` | no shop `Origin` → no cookies set; another origin stays stateless; the shop origin gets a session cookie |
+| `Auth/RegisterTest` | creates a customer and logs in; `is_admin` in the body ignored; duplicate email / weak or unconfirmed password → 422; throttled per IP; no shop session → 403 |
+| `Auth/LoginTest` | valid login returns the user without secrets; wrong password and unknown email → the same 422; 6th attempt/min → 429; admins can log in to the shop too; no shop session → 403 |
+| `Auth/SessionTest` | `me` returns the user; guest `me` → 401 JSON; bearer tokens not accepted; logout ends the session; guest logout → 401 |
+| `Auth/StatefulCsrfTest` | `/sanctum/csrf-cookie` sets `XSRF-TOKEN` with credentialed CORS; shop-origin POST without a token → 419; with the token → accepted; no shop origin → no token needed |
+| `Admin/AdminAccessTest` | guests → login redirect; customers → 403 everywhere; admins open every page; every admin route except login/logout needs an admin; no register/reset/verify/2FA/passkey routes; panel is a 404 when disabled; API responses still set no cookies |
+| `Admin/LoginTest` | login page renders; admin logs in → dashboard; wrong password and customer credentials → the same error; throttled; logout |
+| `Admin/DashboardTest` | catalogue and enquiry counts; empty catalogue → zeros |
+| `Admin/EnquiriesTest` | newest first, 20 per page; filter by status; invalid filter → validation error; detail shows only the listed fields; unknown/malformed id → 404 |
+| `Admin/ResendEnquiryTest` | failed enquiry re-sent; mail failure keeps it failed with an error toast (not a 502); sent enquiry not re-sent; unknown id → 404; throttled |
+| `Admin/CreateAdminCommandTest` | creates an admin from env; second run changes nothing; short password / missing email refused; interactive create and `--reset` prompt for a hidden password |
+| `AdminCatalogueServiceTest` | dashboard stats; enquiry paging + status filter; detail mapping; re-send rules (failed, stuck pending > 5 min, not sent/recent pending); unknown id → not found |
+
+`StoreEnquiryTest` also covers: a guest enquiry has no account, and `user_id` in the body is ignored.
 
 ### api unit tests (`api/tests/Unit/`)
 - `FakeStoreProductMapperTest`: Fake Store JSON → `Product` DTO mapping (price, rating, category slug);
@@ -293,7 +339,17 @@ data from `Category`/`Product` factories; `Mail::fake()` for mail; `Http::fake()
 - Category page: shows "Top rated" and "More products" sections; unknown category → not-found message.
 - Search: submitting shows results; empty term blocked client-side; no results → empty state.
 - Product detail → enquiry form: required-field errors shown; successful submit → "Thank you";
-  502 → retry message, form values kept.
+  502 → retry message, form values kept; 429 → wait message; empty for a guest; pre-filled for a
+  signed-in user and sent with CSRF but no user id.
+- `LoginPage.test.tsx`: logs in, updates the header and returns to `?next=`; server 422 under the
+  email field; 429 → wait; required fields; off-site `?next=` ignored.
+- `RegisterPage.test.tsx`: creates the account and signs in; server 422 under fields; mismatched
+  passwords caught before sending.
+- `UserMenu.test.tsx`: guest links carry the current page; logout returns to the guest header;
+  failed logout keeps the user signed in with a message.
+- `api/client.test.ts`: envelope unwrapping, 422/network/non-JSON errors; CSRF cookie fetched before
+  the first POST and `X-XSRF-TOKEN` + credentials sent; no CSRF on GET; 419 → refresh and retry once
+  (then give up); `me()` → null for a guest; login/logout.
 
 ### Commands
 ```bash
@@ -308,6 +364,7 @@ docker compose up --build
 # first start: migrates and imports the catalogue from fakestoreapi.com
 # (falls back to the committed snapshot if Fake Store is unreachable)
 # web http://localhost:5173 · api http://localhost:8000 · inbox http://localhost:8025
+# admin http://localhost:8000/admin (local login from ADMIN_EMAIL / ADMIN_PASSWORD in .env.example)
 
 # re-sync products from Fake Store at any time
 docker compose exec api php artisan catalogue:import
@@ -322,10 +379,11 @@ Everything runs in containers; the only host requirement is Docker.
 
 | Service | Image | Notes |
 |---|---|---|
-| `db` | `postgres:16-alpine` | Named volume `pgdata` (catalogue survives restarts); `pg_isready` healthcheck; `init.sql` creates `catalogue_test` |
-| `api` | `php:8.4-cli` + `pdo_pgsql` + Composer | `depends_on: db (service_healthy)`; `restart: on-failure`; entrypoint: `migrate --force` → `catalogue:import --if-empty` → `serve --host=0.0.0.0` |
+| `db` | `postgres:16.16-alpine` | Named volume
+ `pgdata` (catalogue survives restarts); `pg_isready` healthcheck; `init.sql` creates `catalogue_test` |
+| `api` | `php:8.4.28-cli-bookworm` + `pdo_pgsql` + `composer:2.11.2` + Node 22 | `depends_on: db (service_healthy)`; `restart: on-failure`; entrypoint: stable `APP_KEY` → `migrate --force` → `catalogue:import --if-empty` → (admin on) `admin:create --from-env` + admin build → `php -S 0.0.0.0:8000` with Laravel's router script |
 | `web` | `node:22-alpine` | Vite dev server on `0.0.0.0:5173`; `VITE_API_URL=http://localhost:8000/api/v1` |
-| `mailpit` | `axllent/mailpit` | SMTP 1025, UI 8025 |
+| `mailpit` | `axllent/mailpit:v1.34.0` | SMTP 1025, UI 8025 |
 
 To start again with an empty database: `docker compose down -v && docker compose up --build`.
 
@@ -365,7 +423,8 @@ is part of the submission too.
 | `product-source` | Fake Store / JSON snapshot / fallback sources, mapper, importer, `catalogue:import`; adding a new source | 3 |
 | `web-page` | React pages/components via `client.ts`, theme tokens, loading/empty/error states, RTL + MSW tests | 4 |
 | `catalogue-data` | Run/force the import, refresh the snapshot, reset or inspect the DB (asks before destructive commands) | 2–5 |
-| `run-checks` | api tests + Pint, web tests + ESLint + `tsc`, all in containers; required before "done" | 3–6 |
+| `run-checks` | api tests + Pint, web tests + ESLint + `tsc`, admin `types:check` + `check` + `build`, all in containers; required before "done" | 3–6 |
+
 | `pr-ready` | Rule audit, secrets check, docs in sync, fresh-clone + offline run, PR checklist | 5–6 |
 | `ai-log` | Record key prompts, AI mistakes and phase times in AI_LOG.md → AI_USAGE.md | all |
 | `laravel-backend` | House style for any PHP in `api/`: layering, container bindings, DTOs, config, errors, mail, rate limit, CORS | 3 |

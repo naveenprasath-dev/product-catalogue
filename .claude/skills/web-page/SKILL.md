@@ -19,6 +19,13 @@ PLAN.md §5 lists the pages and components; TECH_STACK.md §4 lists the stack.
 - Forms: client-side validation is for UX only, and the API's 422 field errors are shown next to the
   matching fields. After a 502, show a retry message and keep what the user typed.
 - Accessibility basics: every input has a label, every image has `alt`, buttons are real `<button>` elements.
+- **Auth:** read the user with `useAuth()` (from `AuthProvider`); a page must work for guests too.
+  `client.ts` handles cookies (`credentials: 'include'`) and CSRF; never store tokens or user data in
+  localStorage. Links to `/login`/`/register` carry `?next=` via `authPath()`, and reading `next`
+  goes through `safeNext()` (no open redirects). Never send a user id in a request body.
+- **Small screens:** header/layout overrides for ≤ 480px go at the end of `global.css` (a later rule
+  wins the cascade). Check at 320/375/414px with bounding boxes (no overlap, no horizontal overflow).
+
 
 ## Tests
 - `*.test.tsx` next to the page or component. Use React Testing Library queries by role or label text.

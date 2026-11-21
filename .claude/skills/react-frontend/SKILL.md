@@ -11,11 +11,13 @@ CLAUDE.md has the rules; `web-page` has the add-a-page checklist. This skill is 
 ```
 web/src/
 ├── api/        client.ts (only place with VITE_API_URL + fetch), types.ts (mirrors PLAN.md "API contract")
-├── hooks/      useApi.ts (loading/data/error for GET calls)
-├── components/ ProductTile, ProductGrid, SearchBar, EnquiryForm, CategoryNav, Status (Loading/Empty/Error)
-├── pages/      HomePage, CategoryPage, SearchPage, ProductPage, NotFoundPage
+├── auth/       AuthContext.tsx (AuthProvider), context.ts, useAuth.ts, redirect.ts (safeNext/authPath), messages.ts
+├── hooks/      useApi.ts (loading/data/error for GET calls), useCategories.ts
+├── components/ ProductTile, ProductGrid, SearchBar, EnquiryForm, CategoryNav, UserMenu, Footer,
+│               Status (Loading/Empty/Error), icons/
+├── pages/      HomePage, CategoryPage, SearchPage, ProductPage, LoginPage, RegisterPage, NotFoundPage
 ├── styles/     tokens.css (theme variables), global.css
-├── test/       setup.ts, server.ts, handlers.ts, fixtures.ts
+├── test/       setup.ts, server.ts, handlers.ts, fixtures.ts, render.tsx
 ├── App.tsx     routes      main.tsx
 ```
 One component per file, named export, file named after the component. Co-locate `*.test.tsx`.
@@ -31,6 +33,20 @@ One component per file, named export, file named after the component. Co-locate 
 - Non-2xx → throw an `ApiError` class with `status` and optional `fieldErrors: Record<string, string[]>`
   (from 422). Network failure → `ApiError` with `status: 0`.
 - Accept an `AbortSignal` on GETs so effects can cancel.
+- Auth (Sanctum SPA cookies): every request sends `credentials: 'include'`. Before a
+  POST/PUT/PATCH/DELETE, `client.ts` fetches `/sanctum/csrf-cookie` if no `XSRF-TOKEN` cookie exists
+  and sends its value as `X-XSRF-TOKEN`; a 419 refreshes the cookie and retries once. The CSRF URL
+  (`CSRF_COOKIE_URL`) is derived from `VITE_API_URL`, so `client.ts` stays the only module with the URL.
+- **No tokens or user data in localStorage/sessionStorage.** The session is an HttpOnly cookie.
+
+## Auth state
+- `AuthProvider` (in `main.tsx` and the test `render.tsx`) calls `me()` once: 401 → `guest` (not an
+  error). Read it with `useAuth()` → `{ user, status: 'loading' | 'guest' | 'authenticated', login,
+  register, logout }`. Never call the auth functions in `client.ts` from components directly.
+- Redirects after login/register use `?next=` only through `safeNext()` / `authPath()`
+  (`auth/redirect.ts`): same-app paths only (`/…`, not `//…`, not `/login`/`/register`), so it can't
+  be an open redirect.
+- Identity is never sent in a body (e.g. no user id on enquiries); the API reads the session.
 
 ## Data fetching
 - `useApi(fn, deps)` returns a discriminated union:
@@ -40,7 +56,8 @@ One component per file, named export, file named after the component. Co-locate 
   lives in `?q=` so results are linkable.
 
 ## Routing (React Router)
-`/` Home · `/categories/:slug` · `/search?q=` · `/products/:id` (detail + enquiry) · `*` NotFound.
+`/` Home · `/categories/:slug` · `/search?q=` · `/products/:id` (detail + enquiry) · `/login` ·
+`/register` · `*` NotFound.
 404 from the API renders the not-found message inside the page, not a crash.
 
 ## Forms (EnquiryForm)
@@ -57,14 +74,21 @@ One component per file, named export, file named after the component. Co-locate 
 - Plain CSS files per component or BEM-ish class names; mobile-first responsive grid
   (`grid-template-columns: repeat(auto-fill, minmax(220px, 1fr))`).
 - Prices: `Intl.NumberFormat` in one helper (`formatPrice`), not inline.
+- **Small screens** (≤ 480px header): the small-screen rules sit at the **end** of `global.css`,
+  because a later rule with the same specificity wins the cascade (an earlier `display: none` lost to
+  `.button`). Hide text visually (visually-hidden class), not with `display: none`, when it is an
+  accessible name. Verify in a real browser at 320/375/414px with bounding boxes (brand vs account vs
+  search: no overlap, one row, no horizontal overflow), not by eye.
 
 ## Accessibility
 Landmarks (`header`, `nav`, `main`), one `h1` per page, labelled inputs, `alt` = product title,
 visible focus styles, status messages in `role="status"` / errors in `role="alert"`.
 
 ## Dependencies
-Only: react, react-dom, react-router, and dev: vite, typescript, eslint, vitest, @testing-library/*, jsdom, msw.
+Only: react, react-dom, react-router, and dev: vite, typescript, eslint (+ typescript-eslint and plugins),
+vitest, @testing-library/*, jsdom, msw.
 Anything else needs a stated reason (CLAUDE.md).
 
 ## Done when
-`/run-checks` web part passes: `npm test`, `npm run lint`, `npx tsc --noEmit`.
+`/run-checks` web part passes: `npm test` (single run), `npm run lint`, `npx tsc --noEmit`.
+

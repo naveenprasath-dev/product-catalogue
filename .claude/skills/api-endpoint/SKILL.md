@@ -20,6 +20,17 @@ Follow PLAN.md §4 (endpoints) and CLAUDE.md. One endpoint per small, reviewable
 6. **Response** goes through `ProductResource` (or a new Resource), never models, arrays of columns,
    or upstream payloads. No `external_id`, `source` or timestamps unless the client needs them.
 7. **Errors:** unknown resource → 404 JSON; validation → 422; email failure → 502. No stack traces.
+8. **Auth and CSRF** (Sanctum SPA cookie auth, stateful only for `SANCTUM_STATEFUL_DOMAINS`):
+   - A protected route uses `auth:sanctum`; a guest gets **401** `{ "message": "Unauthenticated." }`.
+   - Any POST/PUT/PATCH/DELETE from the shop origin without a valid `X-XSRF-TOKEN` is **419**.
+     Calls without a shop `Origin` (curl, other origins) are stateless: no cookie, no CSRF.
+   - Identity comes from `$request->user()` (e.g. `StoreEnquiryRequest::toData()`), **never** from
+     the body; a `user_id` in the body is ignored. Test that.
+   - Endpoints that need a session (login/register) return 403 without one (`authorize()` =
+     `hasSession()`).
+   - Tests: 401 for a guest, the shop-origin case with `self::SHOP`, and 419 via the
+     `StatefulCsrfTest` approach (laravel-testing skill).
+
 
 ## Done when
 - `docker compose exec api php artisan test --filter=<Name>Test` passes, then the full suite passes.

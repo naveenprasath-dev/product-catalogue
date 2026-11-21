@@ -12,17 +12,24 @@ Required cases: PLAN.md §7 "web tests".
 - `src/test/setup.ts`:
   ```ts
   import '@testing-library/jest-dom/vitest';
+  import { clearXsrfCookie } from './handlers';
   import { server } from './server';
+
   // MSW v3 renamed v2's `onUnhandledRequest` to `onUnhandledFrame`; the old key is silently ignored.
   beforeAll(() => server.listen({ onUnhandledFrame: 'error' }));
-  afterEach(() => server.resetHandlers());
+  afterEach(() => { server.resetHandlers(); clearXsrfCookie(); });
   afterAll(() => server.close());
   ```
 - `src/test/server.ts`: `setupServer(...handlers)` from `msw/node`.
 - `src/test/handlers.ts`: MSW happy-path handlers for every endpoint, URLs built from the same
   base URL `client.ts` uses (set `VITE_API_URL` in the test env, e.g. `.env.test`), returning
   `HttpResponse.json({ data: … })` with fixtures from `fixtures.ts` typed against `api/types.ts`.
-- A `renderWithRouter(ui, { route })` helper wrapping `MemoryRouter` + `Routes`.
+  Auth defaults: `GET /auth/me` → **401** (a guest; existing page tests stay guest-only), logout → 401,
+  login/register → the `ada` fixture. `CSRF_URL` (`/sanctum/csrf-cookie`) → 204 and sets
+  `document.cookie` itself (MSW doesn't write cookies under Node); `TEST_XSRF_TOKEN` is its value.
+- `signedIn(user = ada)` returns handlers for a signed-in session: `server.use(...signedIn())`.
+- `renderWithRouter(ui = <App />, { route })` in `src/test/render.tsx` wraps `MemoryRouter` **and
+  `AuthProvider`**, so `useAuth()` works in every test.
 
 ## Patterns
 ```ts
@@ -43,6 +50,18 @@ expect(screen.getByLabelText(/name/i)).toHaveValue('Ada');   // values kept afte
 - Query priority: `getByRole` > `getByLabelText` > `getByText`; avoid test ids and class selectors.
 - Assert the loading state first (`getByRole('status')`), then the result with `findBy…`.
 - To assert a request was (not) sent, capture it in the handler (`let body; … body = await request.json()`).
+- **Handler order:** within one `server.use(...)` call (and across calls, newest first), the **first
+  matching handler wins**. `signedIn()` includes `GET /auth/me` and `POST /auth/logout`, so a
+  per-test override of those goes **before** the spread:
+  ```ts
+  server.use(
+    http.post(`${API}/auth/logout`, () => HttpResponse.json({ message: 'x' }, { status: 500 })),
+    ...signedIn(),
+  );
+  ```
+- CSRF/credentials: assert the `X-XSRF-TOKEN` header in the handler (`request.headers.get('X-XSRF-TOKEN')`
+  equals `TEST_XSRF_TOKEN`). MSW's intercepted `Request` drops `credentials`, so check
+  `credentials: 'include'` with a pass-through `vi.spyOn(globalThis, 'fetch')` (see `api/client.test.ts`).
 
 ## Rules
 - Never mock `client.ts` or `fetch` directly — MSW keeps the real client under test.
@@ -51,6 +70,7 @@ expect(screen.getByLabelText(/name/i)).toHaveValue('Ada');   // values kept afte
 
 ## Run
 ```bash
-docker compose exec web npm test -- --run
-docker compose exec web npm test -- --run src/pages/ProductPage.test.tsx
+docker compose exec web npm test                                   # vitest run (single run)
+docker compose exec web npm test -- src/pages/ProductPage.test.tsx
+
 ```

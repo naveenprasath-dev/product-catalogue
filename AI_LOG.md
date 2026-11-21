@@ -32,6 +32,10 @@ Tool: Claude Code · Model: Claude Opus 5.5
     site** (my decision): sticky header with central search, hero + shop-by-category on home,
     richer product cards, breadcrumbs, skeleton loaders. Constraint kept: no invented store claims
     (shipping, returns, reviews) that the data doesn't support.
+11. Decided to **keep Laravel Boost** (dev-only MCP + Laravel guidelines for the AI agents) and
+    document it, and approved four new CLAUDE.md rules: Sanctum cookie auth with no tokens in
+    localStorage; user id only from the session; JSON errors only for `api/*`; admin pages catch
+    domain errors and show a toast (my decisions).
 
 ## Where the AI got something wrong / I corrected it
 - **No login/logout for users.** The plan quietly listed "auth" as a cut and Claude never raised it as
@@ -52,6 +56,12 @@ Tool: Claude Code · Model: Claude Opus 5.5
 - **Search heading capitalised the user's query** ("Results For “Jacket”") because `.page-title`
   had `text-transform: capitalize` for category names. Found in the Playwright screenshot review;
   scoped to `.page-title--category`. (caught by Claude during visual review)
+- **The AI claimed a fix it hadn't verified.** After the redesign, the frontend agent reported the
+  Register button was hidden below 480px, but the 375px screenshot showed the wordmark overlapping a
+  wrapped "Log in" and Register still visible (`.button { display: inline-flex }` later in the CSS won
+  the cascade). It had only checked horizontal overflow. Claude caught it reviewing the screenshot; the
+  fix uses an icon-only header on small screens, verified with a bounding-box overlap check at 320/375/414px.
+  Lesson: "done" claims about UI need a screenshot or a measurement of the exact thing. (caught by Claude)
 
 ## Time tracking
 | Phase | Start | End | Minutes |

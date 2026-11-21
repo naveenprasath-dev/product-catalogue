@@ -10,7 +10,8 @@ Make sure the stack is up first (`docker compose ps`; if not, `docker compose up
 ```bash
 docker compose exec api php artisan test
 docker compose exec api ./vendor/bin/pint --test
-docker compose exec web npm test -- --run
+docker compose exec web npm test          # already a single run (vitest run)
+
 docker compose exec web npm run lint
 docker compose exec web npx tsc --noEmit
 # admin panel (Inertia + React, inside api/)

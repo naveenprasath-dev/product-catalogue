@@ -43,10 +43,17 @@ Controller ← Resource ← Product DTO
   `array_values(array_filter(array_map('trim', explode(',', env('FEATURED_PRODUCT_IDS', '')))))`.
 
 ## Errors (bootstrap/app.php → `withExceptions`)
-- `$exceptions->shouldRenderJsonWhen(fn ($request) => $request->is('api/*') || $request->expectsJson());`
-- `ModelNotFoundException` / `NotFoundHttpException` → `{ "message": "Not found." }` 404.
+- Errors are JSON **only** for `api/*` or `expectsJson()`:
+  `$exceptions->shouldRenderJsonWhen(fn ($request) => $request->is('api/*') || $request->expectsJson());`
+  `/admin` is a web app and gets Laravel's normal (debug-off) error pages.
+- `ModelNotFoundException` / `NotFoundHttpException` → `{ "message": "Not found." }` 404 (same JSON rule);
+  `EnquiryNotFound` is mapped to a 404.
 - Domain exceptions (`CatalogueUnavailable`, mail failures) are caught in the service/command, not leaked.
-  Email failure → service marks the enquiry `failed` and the controller returns 502 `{ "message": … }`.
+  Email failure → service marks the enquiry `failed` and throws `EnquiryNotSent`, which the global
+  renderer turns into 502 `{ "message": … }` **as JSON, for every request**.
+- So **admin controllers must catch domain exceptions themselves** (`EnquiryNotSent`,
+  `EnquiryNotResendable`) and flash a toast + redirect back (see `Admin\EnquiryController::resend`);
+  otherwise the admin gets a raw 502 JSON body.
 - `APP_DEBUG=false` means no trace in bodies; never return `$e->getMessage()` from third-party exceptions.
 
 ## Logging
@@ -61,9 +68,15 @@ Controller ← Resource ← Product DTO
   (and `Throwable` as a last resort) to mark the enquiry `failed`.
 
 ## HTTP edges
-- API routes in `routes/api.php` under `Route::prefix('v1')`; enable via `php artisan install:api` if missing.
+- API routes in `routes/api.php` under `Route::prefix('v1')`; admin routes in `routes/web.php`
+  (only registered when `config('admin.enabled')`).
+- Sessions: `bootstrap/app.php` calls `$middleware->statefulApi()`, so Sanctum gives requests from
+  `SANCTUM_STATEFUL_DOMAINS` (the shop) a session + CSRF on `/api`; everyone else stays stateless.
+  Cookie auth only (`Sanctum::getAccessTokenFromRequestUsing(fn () => null)`): bearer tokens are ignored.
 - Rate limit: define `RateLimiter::for('enquiries', …)` in `AppServiceProvider::boot()`, apply `throttle:enquiries`.
-- CORS: `php artisan config:publish cors`, set `allowed_origins` from `env('CORS_ALLOWED_ORIGIN')`.
+- CORS (`config/cors.php`): `allowed_origins` from `env('CORS_ALLOWED_ORIGIN')`, paths `api/*` +
+  `sanctum/csrf-cookie`, `supports_credentials: true`.
+
 - Responses: API Resources only. Cast decimals to numbers in the Resource (`(float) $this->price`),
   because `decimal:2` casts return strings.
 
