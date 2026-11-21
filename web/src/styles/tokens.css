@@ -1,0 +1,150 @@
+/*
+ * Theme tokens. The only place for colours, fonts, spacing, radii, shadows and motion.
+ * Components use var(--…) only, so a rebrand means editing this file.
+ * Text/background pairs are chosen for WCAG AA (≥ 4.5:1) in both light and dark.
+ */
+:root {
+  color-scheme: light dark;
+
+  /* Neutrals */
+  --color-bg: #f6f7f9;
+  --color-surface: #ffffff;
+  --color-surface-muted: #f1f3f6;
+  --color-surface-raised: #ffffff;
+  --color-text: #111827;
+  --color-text-muted: #4b5563;
+  --color-border: #e3e6eb;
+  --color-border-strong: #c9ced6;
+
+  /* Brand accent (indigo) */
+  --color-primary: #4338ca;
+  --color-primary-hover: #3730a3;
+  --color-primary-soft: #eef0ff;
+  --color-on-primary: #ffffff;
+
+  /* Hero */
+  --color-hero-from: #312e81;
+  --color-hero-to: #4338ca;
+  --color-on-hero: #ffffff;
+  --color-on-hero-muted: #e0e3ff;
+  --color-hero-glow: rgb(255 255 255 / 0.14);
+
+  /* Feedback */
+  --color-success: #047857;
+  --color-success-bg: #ecfdf5;
+  --color-danger: #b91c1c;
+  --color-danger-bg: #fef2f2;
+  --color-badge: #92400e;
+  --color-badge-bg: #fef3c7;
+  --color-star: #f59e0b;
+  --color-star-empty: #d4d8de;
+  --color-focus: #f59e0b;
+
+  /* Product imagery: always light, so white-background photos blend in (mix-blend-mode: multiply). */
+  --color-media-bg: #f3f4f6;
+
+  /* Skeletons */
+  --color-skeleton: #e7e9ee;
+  --color-skeleton-shine: #f4f5f7;
+
+  /* Typography */
+  --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-size-xs: 0.75rem;
+  --font-size-sm: 0.875rem;
+  --font-size-base: 1rem;
+  --font-size-md: 1.125rem;
+  --font-size-lg: 1.25rem;
+  --font-size-xl: 1.75rem;
+  --font-size-2xl: 2.25rem;
+  --font-size-3xl: clamp(2rem, 1.4rem + 2.6vw, 3.25rem);
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-bold: 650;
+  --font-weight-black: 800;
+  --line-height: 1.55;
+  --line-height-tight: 1.2;
+  --letter-spacing-tight: -0.02em;
+
+  /* Spacing */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+  --space-7: 2.5rem;
+  --space-8: 3rem;
+  --space-10: 4rem;
+
+  /* Shape and depth */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+  --radius-pill: 999px;
+  --shadow-sm: 0 1px 2px rgb(17 24 39 / 0.06);
+  --shadow-md: 0 4px 12px rgb(17 24 39 / 0.08);
+  --shadow-lg: 0 14px 32px rgb(17 24 39 / 0.14);
+  --shadow-header: 0 1px 0 rgb(17 24 39 / 0.06), 0 4px 16px rgb(17 24 39 / 0.04);
+  --focus-ring: 0 0 0 3px var(--color-focus);
+
+  /* Motion */
+  --duration-fast: 120ms;
+  --duration-base: 200ms;
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --lift: -4px;
+
+  /* Layout */
+  --container-width: 1240px;
+  --tile-min-width: 210px;
+  --header-height: 4.25rem;
+  --search-min-width: 18rem;
+  --icon-size: 1.25rem;
+}
+
+/* Dark theme: follows the OS setting. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-bg: #0b0f17;
+    --color-surface: #121826;
+    --color-surface-muted: #1b2232;
+    --color-surface-raised: #182033;
+    --color-text: #f3f4f6;
+    --color-text-muted: #a8b0bd;
+    --color-border: #263042;
+    --color-border-strong: #3a4558;
+
+    --color-primary: #a5b4fc;
+    --color-primary-hover: #c7d2fe;
+    --color-primary-soft: #1e2347;
+    --color-on-primary: #111827;
+
+    --color-hero-from: #1e1b4b;
+    --color-hero-to: #312e81;
+
+    --color-success: #6ee7b7;
+    --color-success-bg: #062e22;
+    --color-danger: #fca5a5;
+    --color-danger-bg: #3a1414;
+    --color-badge: #fde68a;
+    --color-badge-bg: #3d2a06;
+    --color-star-empty: #4b5563;
+
+    --color-skeleton: #1d2535;
+    --color-skeleton-shine: #263042;
+
+    --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.4);
+    --shadow-md: 0 4px 12px rgb(0 0 0 / 0.45);
+    --shadow-lg: 0 14px 32px rgb(0 0 0 / 0.55);
+    --shadow-header: 0 1px 0 rgb(0 0 0 / 0.5);
+  }
+}
+
+/* Users who ask for less motion get no lifts, fades or shimmer. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-fast: 0ms;
+    --duration-base: 0ms;
+    --lift: 0px;
+  }
+}

@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"
+         bootstrap="tests/bootstrap.php"
+         colors="true"
+>
+    <testsuites>
+        <testsuite name="Unit">
+            <directory>tests/Unit</directory>
+        </testsuite>
+        <testsuite name="Feature">
+            <directory>tests/Feature</directory>
+        </testsuite>
+    </testsuites>
+    <source>
+        <include>
+            <directory>app</directory>
+        </include>
+    </source>
+    <php>
+        <!-- force + <server>: the api container already exports DB_*, CACHE_STORE etc., and Laravel reads $_SERVER first. -->
+        <env name="APP_ENV" value="testing" force="true"/>
+        <server name="APP_ENV" value="testing" force="true"/>
+        <env name="ADMIN_ENABLED" value="true" force="true"/>
+        <server name="ADMIN_ENABLED" value="true" force="true"/>
+        <env name="APP_MAINTENANCE_DRIVER" value="file"/>
+        <env name="BCRYPT_ROUNDS" value="4"/>
+        <env name="BROADCAST_CONNECTION" value="null"/>
+        <env name="CACHE_STORE" value="array" force="true"/>
+        <server name="CACHE_STORE" value="array" force="true"/>
+        <env name="APP_DEBUG" value="false" force="true"/>
+        <server name="APP_DEBUG" value="false" force="true"/>
+        <!-- APP_KEY: generated per run in tests/bootstrap.php (never hard-coded). -->
+        <!-- Tests always use the separate catalogue_test Postgres database, never the dev DB. -->
+        <env name="DB_CONNECTION" value="pgsql" force="true"/>
+        <server name="DB_CONNECTION" value="pgsql" force="true"/>
+        <env name="DB_DATABASE" value="catalogue_test" force="true"/>
+        <server name="DB_DATABASE" value="catalogue_test" force="true"/>
+        <env name="DB_URL" value=""/>
+        <env name="MAIL_MAILER" value="array" force="true"/>
+        <server name="MAIL_MAILER" value="array" force="true"/>
+        <env name="SALES_INBOX_ADDRESS" value="sales@example.test" force="true"/>
+        <server name="SALES_INBOX_ADDRESS" value="sales@example.test" force="true"/>
+        <env name="CATALOGUE_SOURCE" value="fakestore" force="true"/>
+        <server name="CATALOGUE_SOURCE" value="fakestore" force="true"/>
+        <env name="CATALOGUE_SOURCE_URL" value="https://fakestoreapi.com" force="true"/>
+        <server name="CATALOGUE_SOURCE_URL" value="https://fakestoreapi.com" force="true"/>
+        <env name="CATALOGUE_FALLBACK_TO_FILE" value="true" force="true"/>
+        <server name="CATALOGUE_FALLBACK_TO_FILE" value="true" force="true"/>
+        <env name="CATALOGUE_SNAPSHOT_PATH" value="database/data/fakestore-products.json" force="true"/>
+        <server name="CATALOGUE_SNAPSHOT_PATH" value="database/data/fakestore-products.json" force="true"/>
+        <env name="FEATURED_PRODUCT_IDS" value="12,11,3,18,5" force="true"/>
+        <server name="FEATURED_PRODUCT_IDS" value="12,11,3,18,5" force="true"/>
+        <env name="CURRENCY_RATES_URL" value="https://api.frankfurter.dev/v2" force="true"/>
+        <server name="CURRENCY_RATES_URL" value="https://api.frankfurter.dev/v2" force="true"/>
+        <env name="CORS_ALLOWED_ORIGIN" value="http://localhost:5173" force="true"/>
+        <server name="CORS_ALLOWED_ORIGIN" value="http://localhost:5173" force="true"/>
+        <!-- The container sets SEED_DEMO_DATA=true; tests seed demo data only when they ask for it. -->
+        <env name="SEED_DEMO_DATA" value="false" force="true"/>
+        <server name="SEED_DEMO_DATA" value="false" force="true"/>
+        <env name="QUEUE_CONNECTION" value="sync"/>
+        <env name="SESSION_DRIVER" value="array"/>
+        <env name="PULSE_ENABLED" value="false"/>
+        <env name="TELESCOPE_ENABLED" value="false"/>
+        <env name="NIGHTWATCH_ENABLED" value="false"/>
+    </php>
+</phpunit>

@@ -1,0 +1,6 @@
+# Root env file (api/.gitignore and web/.gitignore cover their own)
+/.env
+/.env.local
+.DS_Store
+.playwright-mcp/
+.claude/settings.local.json

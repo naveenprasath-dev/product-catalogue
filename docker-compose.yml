@@ -1,0 +1,99 @@
+# Local development stack: docker compose up --build
+# web http://localhost:5173 · api http://localhost:8000 · inbox http://localhost:8025
+
+services:
+  db:
+    image: postgres:16.16-alpine
+    environment:
+      POSTGRES_DB: ${DB_DATABASE:-catalogue}
+      POSTGRES_USER: ${DB_USERNAME:-catalogue}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-catalogue}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  api:
+    build: ./api
+    restart: on-failure
+    depends_on:
+      db:
+        condition: service_healthy
+      mailpit:
+        condition: service_started
+    environment:
+      APP_NAME: ${APP_NAME:-Product Catalogue}
+      APP_ENV: ${APP_ENV:-local}
+      APP_DEBUG: ${APP_DEBUG:-false}
+      APP_KEY: ${APP_KEY:-}
+      APP_URL: ${APP_URL:-http://localhost:8000}
+      LOG_CHANNEL: ${LOG_CHANNEL:-stderr}
+      DB_CONNECTION: ${DB_CONNECTION:-pgsql}
+      DB_HOST: ${DB_HOST:-db}
+      DB_PORT: ${DB_PORT:-5432}
+      DB_DATABASE: ${DB_DATABASE:-catalogue}
+      DB_USERNAME: ${DB_USERNAME:-catalogue}
+      DB_PASSWORD: ${DB_PASSWORD:-catalogue}
+      CACHE_STORE: ${CACHE_STORE:-file}
+      SESSION_DRIVER: ${SESSION_DRIVER:-file}
+      SESSION_LIFETIME: ${SESSION_LIFETIME:-120}
+      SESSION_PATH: ${SESSION_PATH:-/}
+      SESSION_DOMAIN: ${SESSION_DOMAIN:-}
+      SESSION_SECURE_COOKIE: ${SESSION_SECURE_COOKIE:-false}
+      QUEUE_CONNECTION: ${QUEUE_CONNECTION:-sync}
+      MAIL_MAILER: ${MAIL_MAILER:-smtp}
+      MAIL_HOST: ${MAIL_HOST:-mailpit}
+      MAIL_PORT: ${MAIL_PORT:-1025}
+      MAIL_FROM_ADDRESS: ${MAIL_FROM_ADDRESS:-shop@example.com}
+      MAIL_FROM_NAME: ${MAIL_FROM_NAME:-Product Catalogue}
+      SALES_INBOX_ADDRESS: ${SALES_INBOX_ADDRESS:-sales@example.com}
+      CATALOGUE_SOURCE: ${CATALOGUE_SOURCE:-fakestore}
+      CATALOGUE_SOURCE_URL: ${CATALOGUE_SOURCE_URL:-https://fakestoreapi.com}
+      CATALOGUE_FALLBACK_TO_FILE: ${CATALOGUE_FALLBACK_TO_FILE:-true}
+      CATALOGUE_SNAPSHOT_PATH: ${CATALOGUE_SNAPSHOT_PATH:-database/data/fakestore-products.json}
+      FEATURED_PRODUCT_IDS: ${FEATURED_PRODUCT_IDS:-12,11,3,18,5}
+      CURRENCY_RATES_URL: ${CURRENCY_RATES_URL:-https://api.frankfurter.dev/v2}
+      CORS_ALLOWED_ORIGIN: ${CORS_ALLOWED_ORIGIN:-http://localhost:5173}
+      SANCTUM_STATEFUL_DOMAINS: ${SANCTUM_STATEFUL_DOMAINS:-localhost:5173}
+      ADMIN_ENABLED: ${ADMIN_ENABLED:-true}
+      ADMIN_NAME: ${ADMIN_NAME:-Admin}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@example.com}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-local-admin-password}
+      SEED_DEMO_DATA: ${SEED_DEMO_DATA:-true}
+      DEMO_CUSTOMER_EMAIL: ${DEMO_CUSTOMER_EMAIL:-customer@example.com}
+      DEMO_CUSTOMER_PASSWORD: ${DEMO_CUSTOMER_PASSWORD:-local-customer-password}
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./api:/var/www/html
+      # Keep the image's vendor/ instead of the host's (anonymous volume).
+      - /var/www/html/vendor
+      # Same for the admin panel's node_modules (npm ci runs in the entrypoint; keeps it off the host).
+      - /var/www/html/node_modules
+
+  mailpit:
+    image: axllent/mailpit:v1.34.0
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+
+  web:
+    build: ./web
+    depends_on:
+      - api
+    environment:
+      VITE_API_URL: ${VITE_API_URL:-http://localhost:8000/api/v1}
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./web:/app
+      - /app/node_modules
+
+volumes:
+  pgdata:
