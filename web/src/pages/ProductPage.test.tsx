@@ -1,4 +1,4 @@
-import { screen, within } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import type { EnquiryInput } from '../api/types'
@@ -187,6 +187,32 @@ describe('ProductPage', () => {
     expect(body).toMatchObject({ product_id: backpack.id, name: 'Ada L.', email: ada.email })
     expect(body).not.toHaveProperty('user_id')
     expect(xsrf).toBe(TEST_XSRF_TOKEN)
+  })
+
+  it('clears the pre-filled name and email after logging out on the product page', async () => {
+    server.use(...signedIn())
+    const user = await renderProduct()
+    expect(await screen.findByDisplayValue(ada.email)).toBe(screen.getByLabelText(/^email/i))
+
+    await user.click(screen.getByRole('button', { name: /log out/i }))
+
+    await waitFor(() => expect(screen.getByLabelText(/^email/i)).toHaveValue(''))
+    expect(screen.getByLabelText(/^name/i)).toHaveValue('')
+  })
+
+  it('keeps what the person typed themselves when logging out', async () => {
+    server.use(...signedIn())
+    const user = await renderProduct()
+    expect(await screen.findByDisplayValue(ada.email)).toBe(screen.getByLabelText(/^email/i))
+
+    await user.clear(screen.getByLabelText(/^name/i))
+    await user.type(screen.getByLabelText(/^name/i), 'Grace Hopper')
+    await user.type(screen.getByLabelText(/^message/i), 'Is this waterproof?')
+    await user.click(screen.getByRole('button', { name: /log out/i }))
+
+    await waitFor(() => expect(screen.getByLabelText(/^email/i)).toHaveValue(''))
+    expect(screen.getByLabelText(/^name/i)).toHaveValue('Grace Hopper')
+    expect(screen.getByLabelText(/^message/i)).toHaveValue('Is this waterproof?')
   })
 
   it('shows a breadcrumb, a visual star rating and a CTA to the enquiry form', async () => {

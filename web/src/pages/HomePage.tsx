@@ -3,8 +3,8 @@ import { getFeatured } from '../api/client'
 import { ArrowRightIcon } from '../components/icons/ArrowRightIcon'
 import { ProductGrid } from '../components/ProductGrid'
 import { ErrorState, GridSkeleton } from '../components/Status'
-import { useApi } from '../hooks/useApi'
 import { useCategories } from '../hooks/useCategories'
+import { useProductApi } from '../hooks/useProductApi'
 
 function CategoryTiles() {
   const state = useCategories()
@@ -39,7 +39,7 @@ function CategoryTiles() {
 }
 
 export function HomePage() {
-  const state = useApi((signal) => getFeatured(signal), [])
+  const state = useProductApi((signal, currency) => getFeatured({ currency, signal }), [])
 
   return (
     <>

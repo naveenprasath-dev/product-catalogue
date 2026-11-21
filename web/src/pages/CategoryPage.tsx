@@ -3,12 +3,12 @@ import { getCategoryProducts } from '../api/client'
 import { Breadcrumbs } from '../components/Breadcrumbs'
 import { ProductGrid } from '../components/ProductGrid'
 import { ErrorState, GridSkeleton } from '../components/Status'
-import { useApi } from '../hooks/useApi'
+import { useProductApi } from '../hooks/useProductApi'
 import { NotFoundPage } from './NotFoundPage'
 
 export function CategoryPage() {
   const { slug = '' } = useParams()
-  const state = useApi((signal) => getCategoryProducts(slug, signal), [slug])
+  const state = useProductApi((signal, currency) => getCategoryProducts(slug, { currency, signal }), [slug])
 
   switch (state.status) {
     case 'loading':

@@ -2,7 +2,18 @@ import { http, HttpResponse } from 'msw'
 import { ada } from '../test/fixtures'
 import { API, CSRF_URL, setXsrfCookie, signedIn, TEST_XSRF_TOKEN } from '../test/handlers'
 import { server } from '../test/server'
-import { ApiError, createEnquiry, getProduct, login, logout, me, searchProducts } from './client'
+import {
+  ApiError,
+  createEnquiry,
+  getCategoryProducts,
+  getCurrencies,
+  getFeatured,
+  getProduct,
+  login,
+  logout,
+  me,
+  searchProducts,
+} from './client'
 
 const enquiry = { product_id: 1, name: 'Ada', email: 'ada@example.com' }
 
@@ -31,6 +42,35 @@ describe('api client', () => {
     )
     await searchProducts('a&b')
     expect(new URL(url).searchParams.get('search')).toBe('a&b')
+  })
+
+  it('adds ?currency= to product requests only when a currency is given', async () => {
+    const urls: string[] = []
+    server.events.on('request:start', ({ request }) => {
+      urls.push(request.url)
+    })
+    try {
+      await getFeatured()
+      await getFeatured({ currency: 'EUR' })
+      await getCategoryProducts('mens-clothing', { currency: 'GBP' })
+      await getProduct(1, { currency: 'EUR' })
+      await searchProducts('a&b', { currency: 'EUR' })
+    } finally {
+      server.events.removeAllListeners()
+    }
+    const params = urls.map((url) => new URL(url).searchParams)
+    expect(params.map((query) => query.get('currency'))).toEqual([null, 'EUR', 'GBP', 'EUR', 'EUR'])
+    expect(params[4]?.get('search')).toBe('a&b')
+  })
+
+  it('returns converted prices with their currency', async () => {
+    await expect(getProduct(1, { currency: 'EUR' })).resolves.toMatchObject({ price: 101.15, currency: 'EUR' })
+  })
+
+  it('getCurrencies() returns the list and meta', async () => {
+    const list = await getCurrencies()
+    expect(list.data.map((currency) => currency.code)).toEqual(['USD', 'EUR', 'GBP'])
+    expect(list.meta).toEqual({ base: 'USD', rates_updated_at: '2026-11-20T06:00:00+00:00' })
   })
 
   it('maps 422 to an ApiError with field errors', async () => {

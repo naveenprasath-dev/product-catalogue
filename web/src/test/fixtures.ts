@@ -1,4 +1,4 @@
-import type { Category, CategoryProducts, Product, User } from '../api/types'
+import type { Category, CategoryProducts, Currency, CurrencyList, Product, User } from '../api/types'
 
 export const ada: User = { id: 7, name: 'Ada Lovelace', email: 'ada@example.com' }
 
@@ -15,6 +15,7 @@ export function makeProduct(overrides: Partial<Product> = {}): Product {
     title: `Product ${id}`,
     description: `Description of product ${id}`,
     price: 19.99,
+    currency: 'USD',
     image_url: `https://images.example.test/${id}.jpg`,
     category: mensClothing,
     rating: { rate: 4.1, count: 120 },
@@ -53,4 +54,20 @@ export const mensClothingListing: CategoryProducts = {
   category: mensClothing,
   top_rated: [jacket, tshirt, backpack],
   others: [shirt],
+}
+
+// Currencies (GET /currencies): enabled only, default first. Rates are relative to USD.
+export const usd: Currency = { code: 'USD', name: 'US Dollar', symbol: '$', rate: 1, is_default: true }
+export const eur: Currency = { code: 'EUR', name: 'Euro', symbol: '€', rate: 0.92, is_default: false }
+export const gbp: Currency = { code: 'GBP', name: 'Pound Sterling', symbol: '£', rate: 0.79, is_default: false }
+export const currencies: Currency[] = [usd, eur, gbp]
+
+export const currencyList: CurrencyList = {
+  data: currencies,
+  meta: { base: 'USD', rates_updated_at: '2026-11-20T06:00:00+00:00' },
+}
+
+/** What the API returns for `?currency=code`: the price converted on the server (2 decimals) + the code. */
+export function inCurrency(product: Product, currency: Currency): Product {
+  return { ...product, price: Math.round(product.price * currency.rate * 100) / 100, currency: currency.code }
 }

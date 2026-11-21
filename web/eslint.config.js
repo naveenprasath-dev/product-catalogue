@@ -18,7 +18,7 @@ export default tseslint.config(
       'react-refresh/only-export-components': ['warn', { allowConstantExport: true }],
       '@typescript-eslint/no-explicit-any': 'error',
       // Check the deps array passed to our data hook like a built-in hook's.
-      'react-hooks/exhaustive-deps': ['warn', { additionalHooks: '^useApi$' }],
+      'react-hooks/exhaustive-deps': ['warn', { additionalHooks: '^(useApi|useProductApi)$' }],
     },
   },
 )

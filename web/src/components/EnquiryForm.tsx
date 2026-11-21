@@ -23,9 +23,26 @@ type Phase =
 
 const EMPTY: Values = { name: '', email: '', phone: '', message: '', website: '' }
 
-/** Fills name/email from the signed-in user without overwriting anything already typed. */
-function prefill(values: Values, user: User): Values {
-  return { ...values, name: values.name || user.name, email: values.email || user.email }
+/** Which user the form was pre-filled for, and the exact values the pre-fill inserted (null = left as typed). */
+type Prefill = { userId: number | null; name: string | null; email: string | null }
+
+const NO_PREFILL: Prefill = { userId: null, name: null, email: null }
+
+/**
+ * Brings the form in line with the current user: first removes what the previous pre-fill inserted
+ * (only if still unchanged, so text the person typed is kept), then fills name/email from the new user
+ * where empty. Signing out therefore clears the previous user's details (QA B6).
+ */
+function syncPrefill(values: Values, previous: Prefill, user: User | null): { values: Values; prefill: Prefill } {
+  const name = previous.name !== null && values.name === previous.name ? '' : values.name
+  const email = previous.email !== null && values.email === previous.email ? '' : values.email
+  if (user === null) {
+    return { values: { ...values, name, email }, prefill: NO_PREFILL }
+  }
+  return {
+    values: { ...values, name: name || user.name, email: email || user.email },
+    prefill: { userId: user.id, name: name === '' ? user.name : null, email: email === '' ? user.email : null },
+  }
 }
 
 // Limits mirror StoreEnquiryRequest; the server is the source of truth (these are UX only).
@@ -61,14 +78,17 @@ function failureMessage(error: ApiError): string {
 
 export function EnquiryForm({ product }: EnquiryFormProps) {
   const { user } = useAuth()
-  const [values, setValues] = useState<Values>(() => (user ? prefill(EMPTY, user) : EMPTY))
-  // The session may resolve after the form mounts: pre-fill once per user (adjusting state during
-  // render, as React recommends, instead of an effect). The user id itself is never sent; the API
-  // takes it from the session.
-  const [prefilledFor, setPrefilledFor] = useState<number | null>(user?.id ?? null)
-  if (user !== null && prefilledFor !== user.id) {
-    setPrefilledFor(user.id)
-    setValues((current) => prefill(current, user))
+  // The session may resolve after the form mounts, or change (login/logout) while it is open: re-sync
+  // once per user change (adjusting state during render, as React recommends, instead of an effect).
+  // The user id itself is never sent; the API takes it from the session.
+  const [initial] = useState(() => syncPrefill(EMPTY, NO_PREFILL, user))
+  const [values, setValues] = useState<Values>(initial.values)
+  const [prefill, setPrefill] = useState<Prefill>(initial.prefill)
+  const userId = user?.id ?? null
+  if (prefill.userId !== userId) {
+    const next = syncPrefill(values, prefill, user)
+    setPrefill(next.prefill)
+    setValues(next.values)
   }
   const [errors, setErrors] = useState<FieldErrors>({})
   const [phase, setPhase] = useState<Phase>({ kind: 'idle' })

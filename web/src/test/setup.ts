@@ -7,5 +7,6 @@ beforeAll(() => server.listen({ onUnhandledFrame: 'error' }))
 afterEach(() => {
   server.resetHandlers()
   clearXsrfCookie()
+  localStorage.clear()
 })
 afterAll(() => server.close())

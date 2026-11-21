@@ -3,12 +3,12 @@ import { searchProducts } from '../api/client'
 import { SearchIcon } from '../components/icons/SearchIcon'
 import { ProductGrid } from '../components/ProductGrid'
 import { ErrorState, GridSkeleton } from '../components/Status'
-import { useApi } from '../hooks/useApi'
+import { useProductApi } from '../hooks/useProductApi'
 
 type SearchResultsProps = { term: string }
 
 function SearchResults({ term }: SearchResultsProps) {
-  const state = useApi((signal) => searchProducts(term, signal), [term])
+  const state = useProductApi((signal, currency) => searchProducts(term, { currency, signal }), [term])
 
   switch (state.status) {
     case 'loading':

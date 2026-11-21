@@ -28,7 +28,7 @@ export function ProductTile({ product, topRated = false }: ProductTileProps) {
           </Link>
         </h3>
         <StarRating rate={product.rating.rate} count={product.rating.count} />
-        <p className="card__price">{formatPrice(product.price)}</p>
+        <p className="card__price">{formatPrice(product.price, product.currency)}</p>
       </div>
     </article>
   )

@@ -3,6 +3,8 @@
 import type {
   Category,
   CategoryProducts,
+  Currency,
+  CurrencyList,
   DataEnvelope,
   EnquiryInput,
   EnquiryResult,
@@ -194,25 +196,73 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   return (body as DataEnvelope<T>).data
 }
 
-export function getFeatured(signal?: AbortSignal): Promise<Product[]> {
-  return request<Product[]>('/products/featured', { signal })
+/** Options for product GETs. `currency` omitted → the server's default currency. */
+export type ProductRequestOptions = {
+  currency?: string
+  signal?: AbortSignal
+}
+
+/** Appends `currency` (when given) to a product path's query string, properly encoded. */
+function withCurrency(path: string, params: Record<string, string>, currency: string | undefined): string {
+  const query = new URLSearchParams(params)
+  if (currency !== undefined && currency !== '') {
+    query.set('currency', currency)
+  }
+  const encoded = query.toString()
+  return encoded === '' ? path : `${path}?${encoded}`
+}
+
+export function getFeatured({ currency, signal }: ProductRequestOptions = {}): Promise<Product[]> {
+  return request<Product[]>(withCurrency('/products/featured', {}, currency), { signal })
 }
 
 export function getCategories(signal?: AbortSignal): Promise<Category[]> {
   return request<Category[]>('/categories', { signal })
 }
 
-export function getCategoryProducts(slug: string, signal?: AbortSignal): Promise<CategoryProducts> {
-  return request<CategoryProducts>(`/categories/${encodeURIComponent(slug)}/products`, { signal })
+export function getCategoryProducts(
+  slug: string,
+  { currency, signal }: ProductRequestOptions = {},
+): Promise<CategoryProducts> {
+  return request<CategoryProducts>(
+    withCurrency(`/categories/${encodeURIComponent(slug)}/products`, {}, currency),
+    { signal },
+  )
 }
 
-export function searchProducts(term: string, signal?: AbortSignal): Promise<Product[]> {
-  const query = new URLSearchParams({ search: term })
-  return request<Product[]>(`/products?${query.toString()}`, { signal })
+export function searchProducts(term: string, { currency, signal }: ProductRequestOptions = {}): Promise<Product[]> {
+  return request<Product[]>(withCurrency('/products', { search: term }, currency), { signal })
 }
 
-export function getProduct(id: string | number, signal?: AbortSignal): Promise<Product> {
-  return request<Product>(`/products/${encodeURIComponent(String(id))}`, { signal })
+export function getProduct(id: string | number, { currency, signal }: ProductRequestOptions = {}): Promise<Product> {
+  return request<Product>(withCurrency(`/products/${encodeURIComponent(String(id))}`, {}, currency), { signal })
+}
+
+/** Enabled display currencies (default first) plus the rates' base and last update. */
+export async function getCurrencies(signal?: AbortSignal): Promise<CurrencyList> {
+  const body = await send('/currencies', { signal })
+  if (!isRecord(body) || !Array.isArray(body.data) || !isRecord(body.meta)) {
+    throw new ApiError(200, 'Unexpected response from the server.')
+  }
+  const meta = body.meta
+  return {
+    data: body.data.filter(isCurrency),
+    meta: {
+      base: typeof meta.base === 'string' ? meta.base : '',
+      rates_updated_at: typeof meta.rates_updated_at === 'string' ? meta.rates_updated_at : null,
+    },
+  }
+}
+
+function isCurrency(value: unknown): value is Currency {
+  return (
+    isRecord(value) &&
+    typeof value.code === 'string' &&
+    typeof value.name === 'string' &&
+    typeof value.symbol === 'string' &&
+    typeof value.rate === 'number' &&
+    typeof value.is_default === 'boolean'
+  )
 }
 
 export function createEnquiry(input: EnquiryInput): Promise<EnquiryResult> {

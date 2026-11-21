@@ -3,6 +3,7 @@ import { getCategories } from '../api/client'
 import { useApi } from '../hooks/useApi'
 import type { LayoutContext } from '../hooks/useCategories'
 import { CategoryNav } from './CategoryNav'
+import { CurrencySelect } from './CurrencySelect'
 import { Footer } from './Footer'
 import { BagIcon } from './icons/BagIcon'
 import { SearchBar } from './SearchBar'
@@ -27,7 +28,10 @@ export function Layout() {
             <span className="brand__name">Product Catalogue</span>
           </Link>
           <SearchBar key={params.get('q') ?? ''} />
-          <UserMenu />
+          <div className="header__actions">
+            <CurrencySelect />
+            <UserMenu />
+          </div>
         </div>
         <div className="header__nav">
           <div className="container">

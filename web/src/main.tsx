@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import { BrowserRouter } from 'react-router'
 import { App } from './App'
 import { AuthProvider } from './auth/AuthContext'
+import { CurrencyProvider } from './currency/CurrencyProvider'
 import './styles/tokens.css'
 import './styles/global.css'
 
@@ -15,7 +16,9 @@ createRoot(root).render(
   <StrictMode>
     <BrowserRouter>
       <AuthProvider>
-        <App />
+        <CurrencyProvider>
+          <App />
+        </CurrencyProvider>
       </AuthProvider>
     </BrowserRouter>
   </StrictMode>,
