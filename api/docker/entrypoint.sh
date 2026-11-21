@@ -25,6 +25,10 @@ fi
 
 php artisan migrate --force
 php artisan catalogue:import --if-empty
+# Replace the seeded starting rates with live ones once (never again after a sync or an admin edit).
+# Not fatal: offline, the seeded rates are used and the admin can sync later.
+php artisan currencies:sync-rates --if-never-updated \
+    || echo "Live currency rates unavailable; using the stored rates (sync later in /admin/currencies)."
 
 # Admin panel (/admin): bootstrap the first admin from ADMIN_* (idempotent; never resets a password)
 # and build the front-end when the build is missing or older than its sources.

@@ -6,6 +6,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Catalogue\CatalogueService;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\ProductQueryRequest;
 use App\Http\Resources\CategoryListingResource;
 use App\Http\Resources\CategoryResource;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -19,7 +20,7 @@ final class CategoryController extends Controller
         return CategoryResource::collection($this->catalogue->categories());
     }
 
-    public function products(string $slug): CategoryListingResource
+    public function products(ProductQueryRequest $request, string $slug): CategoryListingResource
     {
         $listing = $this->catalogue->categoryListing($slug) ?? abort(404);
 

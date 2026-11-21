@@ -32,6 +32,7 @@ final class ProductShowTest extends TestCase
                 'title' => 'Silver Ring',
                 'description' => 'A ring.',
                 'price' => 10.99,
+                'currency' => 'USD',
                 'image_url' => 'https://example.test/ring.png',
                 'category' => ['slug' => 'jewelery', 'name' => 'jewelery'],
                 'rating' => ['rate' => 4.6, 'count' => 400],

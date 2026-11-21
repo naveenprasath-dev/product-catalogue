@@ -50,6 +50,8 @@
         <server name="CATALOGUE_SNAPSHOT_PATH" value="database/data/fakestore-products.json" force="true"/>
         <env name="FEATURED_PRODUCT_IDS" value="12,11,3,18,5" force="true"/>
         <server name="FEATURED_PRODUCT_IDS" value="12,11,3,18,5" force="true"/>
+        <env name="CURRENCY_RATES_URL" value="https://api.frankfurter.dev/v2" force="true"/>
+        <server name="CURRENCY_RATES_URL" value="https://api.frankfurter.dev/v2" force="true"/>
         <env name="CORS_ALLOWED_ORIGIN" value="http://localhost:5173" force="true"/>
         <server name="CORS_ALLOWED_ORIGIN" value="http://localhost:5173" force="true"/>
         <env name="QUEUE_CONNECTION" value="sync"/>

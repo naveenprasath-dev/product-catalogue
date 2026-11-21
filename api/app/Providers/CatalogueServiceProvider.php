@@ -5,9 +5,16 @@ declare(strict_types=1);
 namespace App\Providers;
 
 use App\Catalogue\CatalogueService;
+use App\Catalogue\Contracts\CurrencyRateSource;
+use App\Catalogue\Contracts\CurrencyRepository;
 use App\Catalogue\Contracts\EnquiryRepository;
 use App\Catalogue\Contracts\ProductRepository;
 use App\Catalogue\Contracts\ProductSource;
+use App\Catalogue\Currency\CurrencyService;
+use App\Catalogue\Currency\FrankfurterRateSource;
+use App\Catalogue\Currency\RateSyncer;
+use App\Catalogue\Currency\SelectedCurrency;
+use App\Catalogue\Repositories\EloquentCurrencyRepository;
 use App\Catalogue\Repositories\EloquentEnquiryRepository;
 use App\Catalogue\Repositories\EloquentProductRepository;
 use App\Catalogue\Sources\FakeStoreProductMapper;
@@ -60,5 +67,35 @@ final class CatalogueServiceProvider extends ServiceProvider
             topRatedPerCategory: (int) config('catalogue.top_rated_per_category'),
             salesInbox: (string) config('catalogue.sales_inbox'),
         ));
+
+        $this->registerCurrencies();
+    }
+
+    private function registerCurrencies(): void
+    {
+        $this->app->bind(CurrencyRepository::class, EloquentCurrencyRepository::class);
+
+        // Live rates: only RateSyncer (currencies:sync-rates, admin "Sync live rates") uses this.
+        $this->app->bind(CurrencyRateSource::class, fn (Container $app): CurrencyRateSource => new FrankfurterRateSource(
+            http: $app->make(HttpFactory::class),
+            baseUrl: (string) config('currency.rates_url'),
+            timeoutSeconds: (int) config('currency.rates_timeout'),
+            retries: (int) config('currency.rates_retries'),
+        ));
+
+        $this->app->bind(RateSyncer::class, fn (Container $app): RateSyncer => new RateSyncer(
+            source: $app->make(CurrencyRateSource::class),
+            currencies: $app->make(CurrencyRepository::class),
+            baseCode: (string) config('currency.base'),
+        ));
+
+        $this->app->bind(CurrencyService::class, fn (Container $app): CurrencyService => new CurrencyService(
+            currencies: $app->make(CurrencyRepository::class),
+            syncer: $app->make(RateSyncer::class),
+            baseCode: (string) config('currency.base'),
+        ));
+
+        // One per request: the currency chosen with ?currency= (ProductQueryRequest), read by ProductResource.
+        $this->app->scoped(SelectedCurrency::class);
     }
 }

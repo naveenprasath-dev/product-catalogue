@@ -43,10 +43,11 @@ final class FeaturedProductsTest extends TestCase
 
         $this->getJson('/api/v1/products/featured')
             ->assertOk()
-            ->assertExactJsonStructure(['data' => [['id', 'title', 'description', 'price', 'image_url',
+            ->assertExactJsonStructure(['data' => [['id', 'title', 'description', 'price', 'currency', 'image_url',
                 'category' => ['slug', 'name'], 'rating' => ['rate', 'count']]]])
             ->assertJsonPath('data.0.id', $product->id)
             ->assertJsonPath('data.0.price', 109.95)
+            ->assertJsonPath('data.0.currency', 'USD')
             ->assertJsonPath('data.0.rating.rate', 3.9)
             ->assertJsonPath('data.0.rating.count', 120)
             ->assertJsonPath('data.0.category', ['slug' => 'mens-clothing', 'name' => "men's clothing"])

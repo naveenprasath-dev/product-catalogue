@@ -4,11 +4,13 @@ declare(strict_types=1);
 
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\CategoryController;
+use App\Http\Controllers\Api\CurrencyController;
 use App\Http\Controllers\Api\EnquiryController;
 use App\Http\Controllers\Api\ProductController;
 use Illuminate\Support\Facades\Route;
 
 // Every route reads from our database only; none of them calls an upstream product source.
+// Product routes take an optional ?currency=XXX (ProductQueryRequest).
 Route::prefix('v1')->group(function (): void {
     Route::get('products/featured', [ProductController::class, 'featured']);
     Route::get('products', [ProductController::class, 'index']);
@@ -18,6 +20,9 @@ Route::prefix('v1')->group(function (): void {
     Route::get('categories', [CategoryController::class, 'index']);
     Route::get('categories/{slug}/products', [CategoryController::class, 'products'])
         ->where('slug', '[a-z0-9-]{1,100}');
+
+    // Enabled currencies and their stored rates (live rates are synced separately, never per request).
+    Route::get('currencies', [CurrencyController::class, 'index']);
 
     Route::post('enquiries', [EnquiryController::class, 'store'])->middleware('throttle:enquiries');
 
