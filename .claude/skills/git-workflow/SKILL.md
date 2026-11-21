@@ -23,7 +23,7 @@ immediately, even if deleted later).
    `api/storage/**` runtime files, `.playwright-mcp/`, `.DS_Store`, persisted APP_KEY files, logs.
    Verify with `git check-ignore -v <path>`; fix `.gitignore` rather than unstaging by hand each time.
 4. Secrets scan of the staged diff:
-   `git diff --cached | grep -nEi '(api[_-]?key|secret|token|password|BEGIN .*PRIVATE)'` — every hit must
+   `git diff --cached | grep -nEi '(api[_-]?key|secret|token|password|BEGIN .*PRIVATE|base64:[A-Za-z0-9+/=]{20,})'` — every hit must
    be a local-only placeholder from `.env.example` (e.g. `DB_PASSWORD=catalogue`, default admin creds)
    or test data. If unsure, stop and ask the user.
 5. Checks pass (`/run-checks`). Don't commit a red state unless the user asks for a WIP commit.

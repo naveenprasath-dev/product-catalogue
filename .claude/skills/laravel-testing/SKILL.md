@@ -13,7 +13,8 @@ The required cases are listed per file in PLAN.md §7 — implement those first.
   `$_SERVER` first, so `<env>` alone would lose. Forced: `APP_ENV=testing` (Laravel's test-only
   behaviour, e.g. the CSRF bypass, depends on it), `ADMIN_ENABLED=true` (`routes/web.php` registers
   `/admin` only when on), `DB_DATABASE=catalogue_test`, `MAIL_MAILER=array`, `CACHE_STORE=array`,
-  `APP_DEBUG=false`, a fixed test `APP_KEY`, the `CATALOGUE_*` settings. `SESSION_DRIVER=array`.
+  `APP_DEBUG=false`, the `CATALOGUE_*` settings. **`APP_KEY` is never in `phpunit.xml`**: `tests/bootstrap.php`
+  generates a random one per run (a hard-coded key, even a test one, is flagged by secret scanners). `SESSION_DRIVER=array`.
   Add a new env-dependent setting the same way (env + server, force).
 - Base `tests/TestCase.php` calls `Http::preventStrayRequests();` in `setUp()` so no test can hit the network.
   It also provides:

@@ -46,6 +46,7 @@ time lost) · **minor** (annoyance, quick fix). Status: **fixed** · **workaroun
 | 24 | 2026-11-21 | Admin re-send/sync toast disappeared before it was noticed | admin/ui | minor | fixed |
 | 25 | 2026-11-22 | One API test failed once, then passed in 13 runs (flaky, unidentified) | tests | minor | open |
 | 26 | 2026-11-22 | Search box collapsed to its icon in the signed-in header at ~1000px | ui | major | fixed |
+| 27 | 2026-11-22 | GitGuardian flagged the hard-coded test `APP_KEY` in `api/phpunit.xml` | security/tests | major | fixed (history: see entry) |
 
 ---
 
@@ -307,4 +308,20 @@ time lost) · **minor** (annoyance, quick fix). Status: **fixed** · **workaroun
   and cover the widest state (signed in + currency), not only guests.
 - **Refs:** `web/src/styles/global.css` (`.header__inner`), `web/src/styles/tokens.css`,
   `docs/screenshots/13-search-signed-in-1000.png`.
+
+## 27. GitGuardian flagged the hard-coded test `APP_KEY` in `api/phpunit.xml`
+
+- **Symptom:** The GitGuardian check on PR #1 failed: "1 secret uncovered", Laravel `APP_KEY` in
+  `api/phpunit.xml` (first added in commit `c5aa1e0`).
+- **Cause:** To force tests off the container's environment, `phpunit.xml` pinned a fixed test key
+  (`base64:` of "testing-key-not-a-secret-32bytes"). It was test-only and never used by the app or
+  any environment, but a committed key is still a secret-scanner finding, and the pre-push scan only
+  looked for real-looking keys.
+- **Fix:** Removed the key from `phpunit.xml`; `api/tests/bootstrap.php` now generates a random
+  `APP_KEY` for each test run (235 tests green). No real key was ever committed (checked the full
+  history). The old test key still exists in the PR's earlier commits; the GitGuardian incident is
+  resolved by marking it as a test credential (or by rewriting history, which needs a force-push).
+- **Prevention / lesson:** Never commit any key, even a dummy one: generate test keys at runtime.
+  The pre-push secret scan in `git-workflow` should also match `base64:` keys in config files.
+- **Refs:** `api/phpunit.xml`, `api/tests/bootstrap.php`, `.claude/skills/laravel-testing/SKILL.md`.
 
