@@ -45,6 +45,7 @@ time lost) · **minor** (annoyance, quick fix). Status: **fixed** · **workaroun
 | 23 | 2026-11-21 | Admin mobile sidebar stayed open after navigating (QA B7) | admin/ui | minor | fixed |
 | 24 | 2026-11-21 | Admin re-send/sync toast disappeared before it was noticed | admin/ui | minor | fixed |
 | 25 | 2026-11-22 | One API test failed once, then passed in 13 runs (flaky, unidentified) | tests | minor | open |
+| 26 | 2026-11-22 | Search box collapsed to its icon in the signed-in header at ~1000px | ui | major | fixed |
 
 ---
 
@@ -289,4 +290,21 @@ time lost) · **minor** (annoyance, quick fix). Status: **fixed** · **workaroun
   (`php artisan test 2>&1 | tee /tmp/test.log`). Time-dependent tests should freeze time
   (`$this->travelTo()` / `Carbon::setTestNow()`).
 - **Refs:** `api/tests/Feature/Admin/ResendEnquiryTest.php`, `api/tests/Feature/Admin/LoginTest.php` (suspects).
+
+## 26. Search box collapsed to its icon in the signed-in header at ~1000px
+
+- **Symptom:** On `/search` at about 1000px wide, signed in with the currency dropdown, the search
+  input shrank to nothing: only the magnifier icon and the Search button were visible (reported
+  by the user with a screenshot).
+- **Cause:** From 768px the header was one row with `grid-template-columns: auto minmax(0, 1fr) auto`.
+  The signed-in account area (currency select, avatar, "Hi, name", Log out) plus the brand took
+  almost all the width, and `minmax(0, …)` let the search column shrink to 0. Earlier checks
+  measured overlap and overflow, but not the input's own width, and mostly as a guest.
+- **Fix:** The one-row header now starts at 1100px, with the search column floored at
+  `--search-min-width` (18rem); below that the search keeps its own full-width row. Verified
+  signed in at 375–1440px: input never under 239px, no overlap, no horizontal overflow.
+- **Prevention / lesson:** Layout checks must measure the element that matters (the input width)
+  and cover the widest state (signed in + currency), not only guests.
+- **Refs:** `web/src/styles/global.css` (`.header__inner`), `web/src/styles/tokens.css`,
+  `docs/screenshots/13-search-signed-in-1000.png`.
 
