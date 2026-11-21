@@ -12,9 +12,12 @@ CLAUDE.md has the rules; `web-page` has the add-a-page checklist. This skill is 
 web/src/
 ├── api/        client.ts (only place with VITE_API_URL + fetch), types.ts (mirrors PLAN.md "API contract")
 ├── auth/       AuthContext.tsx (AuthProvider), context.ts, useAuth.ts, redirect.ts (safeNext/authPath), messages.ts
-├── hooks/      useApi.ts (loading/data/error for GET calls), useCategories.ts
-├── components/ ProductTile, ProductGrid, SearchBar, EnquiryForm, CategoryNav, UserMenu, Footer,
-│               Status (Loading/Empty/Error), icons/
+├── currency/   CurrencyProvider.tsx, context.ts, useCurrency.ts, storage.ts (saved choice, guarded localStorage)
+├── hooks/      useApi.ts (loading/data/error for GET calls), useProductApi.ts (useApi + selected currency),
+│               useCategories.ts
+├── lib/        format.ts (formatPrice, formatRating)
+├── components/ ProductTile, ProductGrid, SearchBar, EnquiryForm, CategoryNav, UserMenu, CurrencySelect,
+│               Footer, Status (Loading/Empty/Error), icons/
 ├── pages/      HomePage, CategoryPage, SearchPage, ProductPage, LoginPage, RegisterPage, NotFoundPage
 ├── styles/     tokens.css (theme variables), global.css
 ├── test/       setup.ts, server.ts, handlers.ts, fixtures.ts, render.tsx
@@ -28,8 +31,11 @@ One component per file, named export, file named after the component. Co-locate 
 - Props as `type XProps = { … }`; no `React.FC`.
 
 ## API client
-- `client.ts` exports typed functions (`getFeatured()`, `getCategoryProducts(slug)`, `searchProducts(term)`,
-  `getProduct(id)`, `getCategories()`, `createEnquiry(input)`), each unwrapping `{ data }`.
+- `client.ts` exports typed functions (`getFeatured(opts)`, `getCategoryProducts(slug, opts)`,
+  `searchProducts(term, opts)`, `getProduct(id, opts)`, `getCategories(signal)`, `getCurrencies(signal)`,
+  `createEnquiry(input)`), each unwrapping `{ data }` (`getCurrencies` returns `{ data, meta }`).
+  Product functions take `opts: ProductRequestOptions = { currency?, signal? }`; `currency` is added as
+  `?currency=` only when set (omitted = the server's default currency).
 - Non-2xx → throw an `ApiError` class with `status` and optional `fieldErrors: Record<string, string[]>`
   (from 422). Network failure → `ApiError` with `status: 0`.
 - Accept an `AbortSignal` on GETs so effects can cancel.
@@ -38,6 +44,9 @@ One component per file, named export, file named after the component. Co-locate 
   and sends its value as `X-XSRF-TOKEN`; a 419 refreshes the cookie and retries once. The CSRF URL
   (`CSRF_COOKIE_URL`) is derived from `VITE_API_URL`, so `client.ts` stays the only module with the URL.
 - **No tokens or user data in localStorage/sessionStorage.** The session is an HttpOnly cookie.
+  localStorage is allowed **only for display preferences** (today: the selected currency,
+  `catalogue.currency` in `currency/storage.ts`), never for auth or personal data. Wrap every access
+  in try/catch (private mode, blocked storage) and fall back to the server default.
 
 ## Auth state
 - `AuthProvider` (in `main.tsx` and the test `render.tsx`) calls `me()` once: 401 → `guest` (not an
@@ -52,8 +61,21 @@ One component per file, named export, file named after the component. Co-locate 
 - `useApi(fn, deps)` returns a discriminated union:
   `{ status: 'loading' } | { status: 'error', error: ApiError } | { status: 'success', data: T }`.
   Abort on unmount/deps change. Pages `switch` on `status` and render Loading / Error / Empty / content.
+- **Product data goes through `useProductApi((signal, currency) => getProduct(id, { currency, signal }), [id])`**,
+  not plain `useApi`. It passes the selected currency, re-fetches when it changes, waits while a saved
+  currency is being checked (no flash of the wrong currency), and on a 422 on `currency` (disabled
+  meanwhile) falls back to the default. ESLint checks its deps (`additionalHooks: '^(useApi|useProductApi)$'`).
+  Non-product GETs (`getCategories`) keep `useApi`.
 - No global state library — URL params (`useParams`, `useSearchParams`) are the state. Search term
-  lives in `?q=` so results are linkable.
+  lives in `?q=` so results are linkable. Two small contexts hold app-wide state: auth (`useAuth()`)
+  and currency (`useCurrency()` → `{ currencies, status, selected, requestCurrency, ready, setCurrency,
+  rejectCurrency }`, from `CurrencyProvider` in `main.tsx` and the test `render.tsx`).
+
+## Currency
+- The server converts; the client **never** multiplies by a rate. Each `Product` carries `price` and its
+  `currency` code; render with `formatPrice(product.price, product.currency)`.
+- `CurrencySelect` (header) renders only when `/currencies` loaded (`status === 'ready'`); when it
+  failed, the dropdown is hidden and prices show in the server default.
 
 ## Routing (React Router)
 `/` Home · `/categories/:slug` · `/search?q=` · `/products/:id` (detail + enquiry) · `/login` ·
@@ -73,7 +95,8 @@ One component per file, named export, file named after the component. Co-locate 
   `--space-3`, …). Components use only `var(--…)`. A rebrand = editing tokens.css.
 - Plain CSS files per component or BEM-ish class names; mobile-first responsive grid
   (`grid-template-columns: repeat(auto-fill, minmax(220px, 1fr))`).
-- Prices: `Intl.NumberFormat` in one helper (`formatPrice`), not inline.
+- Prices: `formatPrice(amount, currencyCode)` in `lib/format.ts` (`Intl.NumberFormat`, fixed `en-US`
+  locale, cached per code; a malformed code falls back to `"12.34 XYZ"`), never inline. It never converts.
 - **Small screens** (≤ 480px header): the small-screen rules sit at the **end** of `global.css`,
   because a later rule with the same specificity wins the cascade (an earlier `display: none` lost to
   `.button`). Hide text visually (visually-hidden class), not with `display: none`, when it is an

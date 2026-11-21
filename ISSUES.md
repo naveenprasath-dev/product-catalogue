@@ -36,6 +36,14 @@ time lost) · **minor** (annoyance, quick fix). Status: **fixed** · **workaroun
 | 14 | 2026-11-21 | Mobile header overlap at 375px | ui | major | fixed |
 | 15 | 2026-11-21 | Console error for guest `GET /api/v1/auth/me` 401 | web | minor | won't fix |
 | 16 | 2026-11-21 | Host disk nearly full; Docker disk went read-only | env/docker | blocker | fixed |
+| 17 | 2026-11-21 | Admin login timing revealed which emails are admins (QA B1) | admin/security | major | fixed |
+| 18 | 2026-11-21 | Enquiry personal data visible via Back after admin logout (QA B3) | admin/security | major | fixed |
+| 19 | 2026-11-21 | Throttled admin login showed a bare 429 modal (QA B2) | admin | minor | fixed |
+| 20 | 2026-11-21 | Signed-in user on `/admin/login` landed on a 404 (QA B4) | admin | minor | fixed |
+| 21 | 2026-11-21 | Invalid enquiry filters redirected back unpredictably (QA B5) | admin | minor | fixed |
+| 22 | 2026-11-21 | Enquiry form kept the previous user's details after logout (QA B6) | web | minor | fixed |
+| 23 | 2026-11-21 | Admin mobile sidebar stayed open after navigating (QA B7) | admin/ui | minor | fixed |
+| 24 | 2026-11-21 | Admin re-send/sync toast disappeared before it was noticed | admin/ui | minor | fixed |
 
 ---
 
@@ -198,3 +206,74 @@ time lost) · **minor** (annoyance, quick fix). Status: **fixed** · **workaroun
   then succeeded.
 - **Prevention / lesson:** Keep at least 10 GB free; prune the build cache periodically.
 - **Refs:** none.
+
+## 17. Admin login timing revealed which emails are admins (QA B1)
+
+- **Symptom:** Same generic error for every failed admin login, but unknown and customer emails
+  answered in ~0.03 s while an admin email with a wrong password took ~0.25 s.
+- **Cause:** `authenticateUsing` returned early before the password hash check for non-admins.
+- **Fix:** Every attempt runs exactly one hash check (a cached dummy hash for unknown/customer
+  emails); all failures now take ~0.25 s. Test counts hasher calls.
+- **Prevention / lesson:** Authentication failures must cost the same regardless of why they fail;
+  test it, don't just compare messages.
+- **Refs:** `docs/qa/ADMIN_QA.md`, `api/app/Providers/FortifyServiceProvider.php`, `tests/Feature/Admin/LoginTest.php`.
+
+## 18. Enquiry personal data visible via Back after admin logout (QA B3)
+
+- **Symptom:** After logging out of `/admin`, the browser Back button showed a full enquiry
+  (customer name, email, phone, message) without any request.
+- **Cause:** Inertia keeps page props in browser history unencrypted by default, and logout didn't clear it.
+- **Fix:** History encryption on admin pages, `Inertia::clearHistory()` on logout,
+  `Cache-Control: no-store, private` on admin responses (plus frame/clickjacking headers).
+- **Prevention / lesson:** Pages that show personal data need no-store and history clearing; QA must
+  include "Back after logout".
+- **Refs:** `docs/qa/ADMIN_QA.md`, `api/app/Http/Middleware/AdminSecurityHeaders.php`, `api/app/Http/Responses/AdminLogoutResponse.php`.
+
+## 19. Throttled admin login showed a bare 429 modal (QA B2)
+
+- **Symptom:** The 6th failed login in a minute showed Inertia's full-screen "429 Too Many Requests" page.
+- **Cause:** The throttle middleware returned a raw 429, which Inertia renders as an error modal.
+- **Fix:** Throttling kept, but reported as a field error ("Too many attempts. Try again in N seconds.").
+- **Prevention / lesson:** With Inertia, user-facing limits should come back as validation errors.
+- **Refs:** `docs/qa/ADMIN_QA.md`, `api/routes/web.php`.
+
+## 20. Signed-in user on `/admin/login` landed on a 404 (QA B4)
+
+- **Symptom:** Opening `/admin/login` while signed in redirected to `/`, which is a 404 in the api.
+- **Cause:** No redirect target was set for authenticated users on guest routes.
+- **Fix:** Admins go to `/admin`; signed-in customers see the login form (to switch account).
+- **Prevention / lesson:** Check every guest route while signed in, as each role.
+- **Refs:** `docs/qa/ADMIN_QA.md`, `api/app/Http/Middleware/RedirectAdminsFromLogin.php`.
+
+## 21. Invalid enquiry filters redirected back unpredictably (QA B5)
+
+- **Symptom:** `?status=bogus` or `?page=abc` redirected to the previously viewed page (once a 404).
+- **Cause:** The FormRequest's failed validation redirects back by default.
+- **Fix:** Invalid filter values are ignored (all statuses, page 1, always 200).
+- **Prevention / lesson:** For GET filters, ignore bad input instead of redirecting.
+- **Refs:** `docs/qa/ADMIN_QA.md`, `api/app/Http/Requests/Admin/ListEnquiriesRequest.php`.
+
+## 22. Enquiry form kept the previous user's details after logout (QA B6)
+
+- **Symptom:** Logging out on a product page left the previous user's name and email in the form.
+- **Cause:** The pre-fill only ran on login; nothing cleared it when the user changed.
+- **Fix:** On user change, clear only the values the pre-fill inserted; typed values are kept.
+- **Prevention / lesson:** Test auth state changes on pages with pre-filled forms.
+- **Refs:** `docs/qa/ADMIN_QA.md`, `web/src/components/EnquiryForm.tsx`, `web/src/pages/ProductPage.test.tsx`.
+
+## 23. Admin mobile sidebar stayed open after navigating (QA B7)
+
+- **Symptom:** At 375px the sidebar sheet stayed open after tapping a link.
+- **Cause:** Nav links didn't close the mobile sheet.
+- **Fix:** Sidebar links close the sheet; enquiry list uses stacked cards under `sm`.
+- **Prevention / lesson:** Include mobile navigation in admin QA.
+- **Refs:** `docs/qa/ADMIN_QA.md`, `api/resources/js/components/nav-main.tsx`.
+
+## 24. Admin re-send/sync toast disappeared before it was noticed
+
+- **Symptom:** After "Sync live rates", no confirmation was visible a few seconds later.
+- **Cause:** The toast fired (~0.3 s) but Sonner's default 4 s duration meant it was gone.
+- **Fix:** Toasts last 6 s and pause on hover; a feature test asserts the flash.
+- **Prevention / lesson:** Assert flashes in tests; pick durations users can actually read.
+- **Refs:** `api/resources/js/components/ui/sonner.tsx`.
+

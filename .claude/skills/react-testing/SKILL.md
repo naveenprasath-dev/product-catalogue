@@ -17,7 +17,8 @@ Required cases: PLAN.md §7 "web tests".
 
   // MSW v3 renamed v2's `onUnhandledRequest` to `onUnhandledFrame`; the old key is silently ignored.
   beforeAll(() => server.listen({ onUnhandledFrame: 'error' }));
-  afterEach(() => { server.resetHandlers(); clearXsrfCookie(); });
+  // localStorage.clear(): the saved currency must not leak between tests.
+  afterEach(() => { server.resetHandlers(); clearXsrfCookie(); localStorage.clear(); });
   afterAll(() => server.close());
   ```
 - `src/test/server.ts`: `setupServer(...handlers)` from `msw/node`.
@@ -27,9 +28,20 @@ Required cases: PLAN.md §7 "web tests".
   Auth defaults: `GET /auth/me` → **401** (a guest; existing page tests stay guest-only), logout → 401,
   login/register → the `ada` fixture. `CSRF_URL` (`/sanctum/csrf-cookie`) → 204 and sets
   `document.cookie` itself (MSW doesn't write cookies under Node); `TEST_XSRF_TOKEN` is its value.
+  Currency defaults: `GET /currencies` → `currencyList` (USD default, EUR, GBP from `fixtures.ts`).
+  Product handlers come from `productHandlers()` and honour `?currency=` like the API: absent → the
+  fixtures as they are (USD); an enabled code → prices converted with `inCurrency(product, currency)`;
+  anything else → 422 `errors.currency`.
 - `signedIn(user = ada)` returns handlers for a signed-in session: `server.use(...signedIn())`.
-- `renderWithRouter(ui = <App />, { route })` in `src/test/render.tsx` wraps `MemoryRouter` **and
-  `AuthProvider`**, so `useAuth()` works in every test.
+- `productHandlers(enabled)` simulates a currency disabled after the list loaded:
+  `server.use(...productHandlers([usd]))` makes `?currency=EUR` a 422 while `/currencies` still lists EUR.
+- `renderWithRouter(ui = <App />, { route })` in `src/test/render.tsx` wraps `MemoryRouter`,
+  **`AuthProvider` and `CurrencyProvider`**, so `useAuth()` and `useCurrency()` work in every test.
+- To start with a saved currency, `localStorage.setItem(CURRENCY_STORAGE_KEY, 'EUR')`
+  (from `currency/storage.ts`) before rendering. Assert the formatted price the mock server returns
+  (e.g. `€51.51` for 55.99 × the fixture rate 0.92), with a comment showing the arithmetic.
+- To assert which currency was requested, record `new URL(request.url).searchParams.get('currency')`
+  in a handler (see `currency/currency.test.tsx`).
 
 ## Patterns
 ```ts

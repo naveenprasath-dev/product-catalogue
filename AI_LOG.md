@@ -36,6 +36,17 @@ Tool: Claude Code · Model: Claude Opus 5.5
     document it, and approved four new CLAUDE.md rules: Sanctum cookie auth with no tokens in
     localStorage; user id only from the session; JSON errors only for `api/*`; admin pages catch
     domain errors and show a toast (my decisions).
+12. Asked for **configurable currencies**: a currency dropdown in the shop, prices converted on the
+    backend, rates managed in the admin, and **live rates from an open-source API** (my decisions).
+    Claude proposed Frankfurter (MIT, no key, ECB data); the agent found v1 deprecated and used v2.
+    Same pattern as products: one `CurrencyRateSource`, never called during a shop request.
+13. Asked for a **QA agent to test the admin panel and every login path**: 71 cases, 7 bugs found
+    (including a login timing leak and personal data visible via Back after logout), all fixed with
+    tests by the build agents. Claude's own browser check also caught the sync toast vanishing and
+    the starter kit's Laravel logo still in the admin sidebar.
+14. Asked for a separate **issues log** (ISSUES.md + `/dev-issues` skill) for development problems.
+15. Disk full (727 MB free) made Docker read-only; chose to free space with build-cache and unused
+    image prunes (my decision).
 
 ## Where the AI got something wrong / I corrected it
 - **No login/logout for users.** The plan quietly listed "auth" as a cut and Claude never raised it as

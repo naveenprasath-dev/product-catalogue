@@ -27,6 +27,24 @@ the API reads Postgres through `ProductRepository`. Sources are never used while
 3. Write a unit test for the mapping and a test for the failure path, then a case in `ImportCatalogueCommandTest`.
 4. Add the new env vars to `.env.example` and the TECH_STACK.md table, and the reason to DECISIONS.md.
 
+## The parallel pattern: exchange-rate sources
+Live exchange rates follow the same shape, separately from products:
+`CurrencyRateSource` (contract, `latest(string $base): array<code, rate>`, `name()`) →
+`FrankfurterRateSource` (the ONLY class that calls Frankfurter, `config('currency.rates_url')` =
+`CURRENCY_RATES_URL`) → used only by `RateSyncer` (from `currencies:sync-rates` and the admin "Sync live
+rates" button) → `CurrencyRepository`. Never called during a shop request. Any failure (network, HTTP,
+bad JSON, wrong `base`, a rate ≤ 0) → `RatesUnavailable` before anything is written.
+
+### Adding a rate source (e.g. another rates API)
+1. `app/Catalogue/Currency/<Name>RateSource.php` implements `CurrencyRateSource`; return upper-case
+   codes → rates for 1 unit of the base; throw `RatesUnavailable` on any problem.
+2. Bind it to `CurrencyRateSource` in `CatalogueServiceProvider` (config keys in `config/currency.php`,
+   env vars in `.env.example` + TECH_STACK.md §8 and the external services table). No API keys
+   committed; prefer a free source with no account (CLAUDE.md).
+3. Tests: `Http::fake()` + `Http::preventStrayRequests()`; extend `SyncCurrencyRatesCommandTest`
+   (success, missing codes reported and kept, every failure → exit 1 with rates unchanged).
+4. Record why in DECISIONS.md "Currency decisions".
+
 ## Tests
 `Http::fake()` using `database/data/fakestore-products.json` as the response body, plus
 `Http::preventStrayRequests()`. Cover: success, re-run gives no duplicates, fallback used, every

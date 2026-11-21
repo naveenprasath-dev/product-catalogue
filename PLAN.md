@@ -12,8 +12,7 @@ this file is updated to match what was built.
 | Layer | Choice | Why |
 |---|---|---|
 | Client | React + TypeScript (Vite) | Quickest for a reviewer to run (no simulator needed); TS is preferred in the brief |
-| Backend | Laravel 13, PHP 8.4, a JSON API (+ the `/admin` panel, phase 2) |
- Its service container, Mail drivers, Http client, FormRequests and API Resources each provide a swap point for one of the things expected to change |
+| Backend | Laravel 13, PHP 8.4, a JSON API (+ the `/admin` panel, phase 2) | Its service container, Mail drivers, Http client, FormRequests and API Resources each provide a swap point for one of the things expected to change |
 | Database | PostgreSQL 16, runs in Docker | Holds the catalogue (imported from Fake Store on first launch, with a committed JSON snapshot as fallback) and every enquiry. Laravel's DB layer keeps the engine swappable (`DB_CONNECTION`); maps directly onto AWS RDS later |
 | Local email | Mailpit (SMTP), runs in Docker | Free, no account needed; the reviewer sees the "sales inbox" at http://localhost:8025 |
 | Tests | PHPUnit (api), Vitest + React Testing Library (web) | Covers the critical path; both run inside their containers |
@@ -23,7 +22,7 @@ this file is updated to match what was built.
 
 ```
 product-catalogue/
-├── api/                 Laravel: JSON API + /admin panel (+ Dockerfile, entrypoint: migrate → import → admin:create/build → serve)
+├── api/                 Laravel: JSON API + /admin panel (+ Dockerfile, entrypoint: migrate → import → sync rates once → admin:create/build → serve)
 ├── web/                 React + TS (Vite) (+ Dockerfile)
 ├── docker/postgres/     init.sql (creates the test database)
 ├── docker-compose.yml   web + api + db (postgres) + mailpit
@@ -35,6 +34,7 @@ product-catalogue/
 ├── README.md
 ├── DECISIONS.md
 ├── ADMIN_PLAN.md        phase 2 plan: admin panel + shop login
+├── docs/qa/ADMIN_QA.md  admin panel + login QA report (71 cases, 7 bugs, fixes)
 └── AI_USAGE.md          (built from AI_LOG.md)
 ```
 
@@ -47,13 +47,15 @@ and **where the API reads them** (our database). Each side has its own contract.
 |---|---|
 | Product data source | `ProductSource` contract, chosen by `CATALOGUE_SOURCE`: `FakeStoreProductSource` (Http with timeout + retry, default) or `JsonFileProductSource` (committed snapshot). `FallbackProductSource` wraps them so a Fake Store failure falls back to the file. Only the importer uses a source. A new supplier/PIM/CSV = a new `ProductSource` binding; nothing else changes. |
 | Product storage / read model | `ProductRepository` contract → `EloquentProductRepository`. Controllers and `CatalogueService` only see this contract and the `Product` DTO. |
+| Exchange-rate source | `CurrencyRateSource` contract → `FrankfurterRateSource` (Frankfurter v2, `CURRENCY_RATES_URL`, no key), bound in `CatalogueServiceProvider`. Only `RateSyncer` uses it (`currencies:sync-rates`, admin "Sync live rates"); shop requests read stored rates. Another provider = a new `CurrencyRateSource` binding. |
 | Email provider | Laravel Mail drivers: SMTP → Mailpit locally; `MAIL_MAILER=ses` for AWS, with no code change. Content lives in the `EnquiryReceived` Mailable. |
 | Look and feel | Only in the React client, styled via theme tokens (CSS variables). |
 | API contract | `Product` DTO + `ProductResource`. The client never sees the raw Fake Store shape or our table columns. |
 | Database engine | Eloquent / Laravel DB layer; engine chosen by `DB_CONNECTION` (pgsql locally, RDS in production). |
 
-Rules: the client calls only our API, never Fake Store. API requests never call Fake Store either;
-they read Postgres only, so the catalogue keeps working when Fake Store is down.
+Rules: the client calls only our API, never Fake Store. API requests never call Fake Store (or
+Frankfurter) either; they read Postgres only, so the catalogue keeps working when either is down.
+Prices are converted only in `CurrencyConverter`.
 
 ## 4. Backend (`api/`)
 
@@ -76,30 +78,45 @@ app/
 │   (phase 2 additions: Contracts/EnquiryRepository, Data/{StoredEnquiry,DashboardStats,EnquiryData,…},
 │    Exceptions/{EnquiryNotFound,EnquiryNotResendable,EnquiryNotSent}; CatalogueService also has
 │    dashboardStats(), enquiries(), enquiry(), resendEnquiry() for the admin panel)
+│   ├── Contracts/CurrencyRepository.php     enabled(), all(), find(), default(), create/update/delete, makeDefault(), updateRates()
+│   ├── Contracts/CurrencyRateSource.php     latest(base): array<code, rate>   (live rates, sync only)
+│   ├── Currency/
+│   │   ├── CurrencyService.php              currency use cases + rules (base fixed at rate 1, one enabled default), syncRates()
+│   │   ├── CurrencyConverter.php            the ONLY price conversion: round(round(usd × rate, 8), 2, half-up)
+│   │   ├── SelectedCurrency.php             request-scoped: the ?currency= choice, read by ProductResource
+│   │   ├── RateSyncer.php                   fetch → check → update enabled non-base rates in one transaction
+│   │   └── FrankfurterRateSource.php        the ONLY class that calls Frankfurter
+│   ├── Repositories/EloquentCurrencyRepository.php
+│   ├── Data/{Currency,CurrencyInput,RateSyncResult}.php
+│   └── Exceptions/{RatesUnavailable,CurrencyNotFound,CurrencyChangeRejected}.php
 ├── Auth/AuthService.php                     shop register/login/logout on the web guard
 ├── Console/Commands/ImportCatalogue.php     php artisan catalogue:import
 ├── Console/Commands/CreateAdmin.php         php artisan admin:create [--from-env | --email=x [--reset]]
+├── Console/Commands/SyncCurrencyRates.php   php artisan currencies:sync-rates [--if-never-updated]
 ├── Http/
-│   ├── Controllers/Api/{Product,Category,Enquiry,Auth}Controller.php   (thin)
-│   ├── Controllers/Admin/{Dashboard,Enquiry}Controller.php            (thin, Inertia)
-│   ├── Middleware/HandleInertiaRequests.php
-│   ├── Requests/{StoreEnquiry,SearchProducts}Request.php, Auth/{Login,Register}Request.php,
-│   │   Admin/ListEnquiriesRequest.php
-│   └── Resources/{Product,Category,CategoryListing,Enquiry,User}Resource.php,
-│       Admin/{Enquiry,DashboardStats}Resource.php
+│   ├── Controllers/Api/{Product,Category,Currency,Enquiry,Auth}Controller.php   (thin)
+│   ├── Controllers/Admin/{Dashboard,Enquiry,Currency}Controller.php            (thin, Inertia)
+│   ├── Middleware/{HandleInertiaRequests,AdminSecurityHeaders,RedirectAdminsFromLogin}.php
+│   ├── Responses/AdminLogoutResponse.php    clears the Inertia history on logout
+│   ├── Requests/{StoreEnquiry,ProductQuery,SearchProducts}Request.php, Auth/{Login,Register}Request.php,
+│   │   Admin/{ListEnquiries,StoreCurrency,UpdateCurrency}Request.php
+│   └── Resources/{Product,Category,CategoryListing,Currency,Enquiry,User}Resource.php,
+│       Admin/{Enquiry,DashboardStats,Currency}Resource.php
 ├── Mail/EnquiryReceived.php
-├── Models/{Category,Product,Enquiry,User}.php
-└── Providers/CatalogueServiceProvider.php   binds ProductSource (per CATALOGUE_SOURCE / fallback flag) + ProductRepository
+├── Models/{Category,Product,Enquiry,User,Currency}.php
+└── Providers/CatalogueServiceProvider.php   binds ProductSource (per CATALOGUE_SOURCE / fallback flag) + ProductRepository,
+                                             the currency layer (CurrencyRateSource, RateSyncer, CurrencyService; SelectedCurrency scoped)
     Providers/FortifyServiceProvider.php     admin-only login (is_admin), no Fortify routes
 config/catalogue.php                         source, source_url, fallback_to_file, snapshot_path, featured_ids,
                                              top_rated_per_category, sales_inbox
+config/currency.php                          base (USD, fixed), rates_url (CURRENCY_RATES_URL), rates_timeout, rates_retries
 config/{admin,sanctum,cors,fortify,session}.php   admin toggle + bootstrap, stateful shop origin, CORS with credentials
 routes/api.php, routes/web.php               /api/v1 (+ /auth/*); /admin (only when ADMIN_ENABLED=true)
-resources/js/                                admin front-end (Inertia + React, pages dashboard / enquiries / auth/login)
+resources/js/                                admin front-end (Inertia + React, pages dashboard / enquiries / currencies / auth/login)
 database/
 ├── data/fakestore-products.json             committed snapshot of GET /products (offline/fallback source)
-├── migrations/                              categories, products, enquiries, users, enquiries.user_id
-├── factories/{Category,Product,Enquiry,User}Factory.php  for tests (tests never use the real import)
+├── migrations/                              categories, products, enquiries, users, enquiries.user_id, currencies (+ seeded rows)
+├── factories/{Category,Product,Enquiry,User,Currency}Factory.php  for tests (tests never use the real import)
 └── seeders/DatabaseSeeder.php               calls catalogue:import, so `migrate --seed` also works
 ```
 
@@ -185,6 +202,17 @@ users                            shop customers and admins in one table
   is_admin       boolean        default false, not mass-assignable
   created_at / updated_at
   (no password_reset_tokens / sessions tables: reset is CLI-only, sessions are files)
+
+currencies                       display currencies; prices stay in USD in products.price
+  code           varchar(3) PK  ISO 4217, upper case
+  name           varchar(100)
+  symbol         varchar(10)
+  rate           numeric(18,8)  units of this currency per 1 USD (USD itself: 1)
+  enabled        boolean        default true (disabled = hidden from the shop, 422 on ?currency=)
+  is_default     boolean        default false; exactly one, enabled
+  rate_updated_at timestamptz   nullable: last sync or rate edit; null = seeded starting value
+  created_at / updated_at
+  (the migration inserts USD (default), EUR, GBP, INR with insertOrIgnore)
 ```
 
 Enquiry flow in `CatalogueService`: save as `pending` → send `EnquiryReceived` → mark `sent`
@@ -199,17 +227,24 @@ Enquiry flow in `CatalogueService`: save as `pending` → send `EnquiryReceived`
 | GET | `/categories/{slug}/products` | `{ top_rated: [...], others: [...] }` (404 for unknown slug) |
 | GET | `/products?search=term` | Server-side text search |
 | GET | `/products/{id}` | Product details (404 if missing) |
+| GET | `/currencies` | Enabled currencies (default first) + `meta.base`, `meta.rates_updated_at` |
 | POST | `/enquiries` | Validate, store in Postgres, email sales inbox, return 201 |
+
+Every product route takes an optional `?currency=XXX` (validated by `ProductQueryRequest`); prices come
+back converted on the server. Admin routes (`/admin/*`, `routes/web.php`) are listed in ADMIN_PLAN.md;
+currencies add `/admin/currencies` (list, create, edit, make default, delete, `POST /admin/currencies/sync`).
 
 ### API contract (shared by `api/` and `web/` — change both sides together)
 
 ```jsonc
 // Product (ProductResource)
-{ "id": 1, "title": "…", "description": "…", "price": 109.95,
+{ "id": 1, "title": "…", "description": "…", "price": 100.06, "currency": "EUR",
   "image_url": "https://…", "category": { "slug": "mens-clothing", "name": "men's clothing" },
   "rating": { "rate": 3.9, "count": 120 } }
 // Category
 { "slug": "mens-clothing", "name": "men's clothing" }
+// Currency (CurrencyResource): rate = units per 1 USD (the base currency)
+{ "code": "EUR", "name": "Euro", "symbol": "€", "rate": 0.91003, "is_default": false }
 ```
 
 | Route | 2xx body |
@@ -219,10 +254,24 @@ Enquiry flow in `CatalogueService`: save as `pending` → send `EnquiryReceived`
 | `GET /categories/{slug}/products` | `{ "data": { "category": Category, "top_rated": Product[], "others": Product[] } }` |
 | `GET /products?search=term` | `{ "data": Product[] }` |
 | `GET /products/{id}` | `{ "data": Product }` |
+| `GET /currencies` | `{ "data": Currency[], "meta": { "base": "USD", "rates_updated_at": "2026-11-21T18:00:00+00:00" \| null } }`: enabled currencies only, default first, then by code |
 | `POST /enquiries` | request `{ product_id, name, email, phone?, message?, website? }` (`website` = honeypot, must be empty) → 201 `{ "data": { "id": 12, "status": "sent" } }` |
 
 Errors are always JSON: 404/429/502 → `{ "message": "…" }`; 422 → Laravel's
 `{ "message": "…", "errors": { "field": ["…"] } }`. `price` and `rating.rate` are JSON numbers, not strings.
+
+#### Currencies (prices are stored in USD; see DECISIONS.md "Currency decisions")
+
+- Every product route (`/products/featured`, `/products?search=`, `/products/{id}`,
+  `/categories/{slug}/products`) takes an optional `?currency=EUR` (3 letters, case-insensitive).
+  Absent → the default currency (USD as seeded, so prices are exactly the stored ones).
+  Unknown, disabled or malformed → 422 `{ "message": "…", "errors": { "currency": ["…"] } }`.
+- `price` is the converted amount: stored USD price × the currency's stored rate, rounded half-up to
+  2 decimals on the server; `currency` names it. Nothing else in Product changes; the client never converts.
+- `rate` and `price` are JSON numbers. `rates_updated_at` is the latest rate change (live sync or admin
+  edit); null while every rate is still the seeded starting value.
+- Rates come from Postgres only; live rates are pulled from Frankfurter by `currencies:sync-rates` or the
+  admin "Sync live rates" button, never during a shop request. Enquiries and their email are unchanged.
 
 #### Shop auth (Sanctum SPA cookie auth, see ADMIN_PLAN.md §19)
 
@@ -261,6 +310,9 @@ Errors are always JSON: 404/429/502 → `{ "message": "…" }`; 422 → Laravel'
 - `CACHE_STORE=file`, `SESSION_DRIVER=file` (no DB-backed cache/sessions). Stateless for non-shop
   callers; the shop origin (`SANCTUM_STATEFUL_DOMAINS`) and `/admin` get a cookie session + CSRF.
 - DB credentials only via env vars (`DB_*` in `.env.example` with local-only defaults).
+- `/admin`: `AdminSecurityHeaders` (no framing, `no-store`, `nosniff`, `Referrer-Policy`), Inertia
+  `EncryptHistory` + history cleared on logout, constant-time failed logins, inline throttle message
+  (docs/qa/ADMIN_QA.md).
 - Mail sent synchronously for the PoC (`ShouldQueue` + the `database` queue driver, then SQS, is the next step).
 
 ## 5. Frontend (`web/`)
@@ -272,7 +324,12 @@ Errors are always JSON: 404/429/502 → `{ "message": "…" }`; 422 → Laravel'
 - Auth: `src/auth/` (`AuthProvider` + `useAuth()`, safe `?next=` redirects). The header's account
   menu (`UserMenu`) shows Log in / Register for guests, the name + Log out when signed in. The enquiry
   form is pre-filled for signed-in users; guests enquire as before.
-- Components: `ProductTile`, `ProductGrid`, `SearchBar`, `EnquiryForm`, `CategoryNav`, `UserMenu`, `Footer`.
+- Currency: `src/currency/` (`CurrencyProvider` + `useCurrency()`) loads `/currencies` once; the header's
+  `CurrencySelect` dropdown picks the display currency (saved in localStorage as a display preference,
+  hidden when `/currencies` fails). Product pages fetch through `useProductApi`, which sends
+  `?currency=`, re-fetches on change and falls back to the default on a 422. Prices are formatted with
+  `formatPrice(amount, currencyCode)`; the client never converts.
+- Components: `ProductTile`, `ProductGrid`, `SearchBar`, `EnquiryForm`, `CategoryNav`, `UserMenu`, `CurrencySelect`, `Footer`.
 - Loading, empty and error states on every page.
 
 ## 6. Assumptions (expanded in DECISIONS.md)
@@ -288,7 +345,9 @@ Errors are always JSON: 404/429/502 → `{ "message": "…" }`; 422 → Laravel'
 | Product data | Imported into Postgres from Fake Store on first launch; the API never calls Fake Store at request time |
 | Fake Store down on first launch | Import falls back to the committed JSON snapshot and says so in the log, so `docker compose up` still gives a working shop |
 | Every source fails | api container exits with a clear error and compose restarts it (`restart: on-failure`) — better than serving an empty shop silently |
+| Prices / currency | Stored in USD (the base, rate 1); converted on the server into the chosen currency with stored rates; USD/EUR/GBP/INR seeded; live rates from Frankfurter on demand only. Enquiries keep the USD price (DECISIONS.md "Currency decisions") |
 | Cuts | Customer confirmation email, password reset UI and email verification (admin reset is CLI-only), product editing in admin, an import trigger in admin, featured products managed in the DB (still `FEATURED_PRODUCT_IDS`), cart, shop pagination, scheduled re-sync, removing products that vanish upstream |
+| Next | Scheduled `currencies:sync-rates` (daily; ECB rates change once per working day) and a scheduled catalogue re-sync, via the Laravel scheduler / EventBridge |
 
 ## 7. Tests
 
@@ -318,11 +377,16 @@ data from `Category`/`Product` factories; `Mail::fake()` for mail; `Http::fake()
 | `Auth/SessionTest` | `me` returns the user; guest `me` → 401 JSON; bearer tokens not accepted; logout ends the session; guest logout → 401 |
 | `Auth/StatefulCsrfTest` | `/sanctum/csrf-cookie` sets `XSRF-TOKEN` with credentialed CORS; shop-origin POST without a token → 419; with the token → accepted; no shop origin → no token needed |
 | `Admin/AdminAccessTest` | guests → login redirect; customers → 403 everywhere; admins open every page; every admin route except login/logout needs an admin; no register/reset/verify/2FA/passkey routes; panel is a 404 when disabled; API responses still set no cookies |
-| `Admin/LoginTest` | login page renders; admin logs in → dashboard; wrong password and customer credentials → the same error; throttled; logout |
+| `Admin/LoginTest` | login page renders; admin logs in → dashboard; wrong password and customer credentials → the same error; every failed login runs exactly one hash check (no timing leak); 6th attempt/min → inline "Too many attempts" message that counts down; signed-in admin at `/admin/login` → dashboard, signed-in customer → the form and can switch to an admin account; logout clears the Inertia history |
 | `Admin/DashboardTest` | catalogue and enquiry counts; empty catalogue → zeros |
-| `Admin/EnquiriesTest` | newest first, 20 per page; filter by status; invalid filter → validation error; detail shows only the listed fields; unknown/malformed id → 404 |
+| `Admin/EnquiriesTest` | newest first, 20 per page; filter by status; invalid filters ignored (all statuses, page 1, 200); detail shows only the listed fields; unknown/malformed id → 404 |
 | `Admin/ResendEnquiryTest` | failed enquiry re-sent; mail failure keeps it failed with an error toast (not a 502); sent enquiry not re-sent; unknown id → 404; throttled |
 | `Admin/CreateAdminCommandTest` | creates an admin from env; second run changes nothing; short password / missing email refused; interactive create and `--reset` prompt for a hidden password |
+| `CurrenciesTest` | enabled currencies, default first then by code; a non-base default comes first; rates are numbers; `rates_updated_at` = latest rate change; never calls the rate source |
+| `ProductCurrencyTest` | no `?currency` → default currency, prices unchanged; converts case-insensitively; unknown / disabled / malformed → 422 on `currency`; admin-chosen default applies; half-up rounding; whole category listing in one currency; 404 and search validation still work |
+| `SyncCurrencyRatesCommandTest` | updates enabled non-base rates from faked Frankfurter; reports and keeps currencies with no live rate; any upstream failure → exit 1, nothing changed; `--if-never-updated` skips once a rate was set and syncs seeded rates; uses `CURRENCY_RATES_URL` |
+| `Admin/CurrenciesTest` | guest/customer access; list, create, edit pages; add, edit rate (shop price follows), disable (hidden from the shop); name-only edit keeps `rate_updated_at`; base rate fixed and base can't be disabled; default can't be disabled; make default leaves one; disabled can't be default; delete rules; sync updates rates with a toast, warns about missing rates, failure → error toast and no change; sync throttled |
+| `Admin/SecurityHeadersTest` | admin pages, login, redirects, 403 and logout carry the security headers; history encryption on; every admin route has both middlewares; the API is unaffected |
 | `AdminCatalogueServiceTest` | dashboard stats; enquiry paging + status filter; detail mapping; re-send rules (failed, stuck pending > 5 min, not sent/recent pending); unknown id → not found |
 
 `StoreEnquiryTest` also covers: a guest enquiry has no account, and `user_id` in the body is ignored.
@@ -333,6 +397,7 @@ data from `Category`/`Product` factories; `Mail::fake()` for mail; `Http::fake()
 - `JsonFileProductSourceTest`: reads the snapshot; missing file / invalid JSON → `CatalogueUnavailable`.
 - `FallbackProductSourceTest`: primary OK → fallback never called; primary throws → fallback used and a warning logged; both throw → `CatalogueUnavailable`.
 - `CatalogueServiceTest`: top-rated split logic in isolation.
+- `CurrencyConverterTest`: base → currency conversion, half-up rounding to cents (float edge cases such as 1.005).
 
 ### web tests (Vitest + React Testing Library, API mocked with MSW at the `client.ts` boundary)
 - Home: renders featured products; loading, then error state when the API fails.
@@ -347,6 +412,14 @@ data from `Category`/`Product` factories; `Mail::fake()` for mail; `Http::fake()
   passwords caught before sending.
 - `UserMenu.test.tsx`: guest links carry the current page; logout returns to the guest header;
   failed logout keeps the user signed in with a message.
+- `currency/currency.test.tsx`: header dropdown lists enabled currencies with the default selected;
+  switching re-fetches products in the new currency and saves the choice; a saved choice is restored
+  without flashing the default; a saved currency no longer enabled → default; `/currencies` fails →
+  dropdown hidden, default prices; API 422 on `currency` → reset to the default and re-fetch; works
+  without localStorage; switching on the product page keeps the enquiry draft; category and search
+  pages send the currency.
+- `lib/format.test.ts`: `formatPrice` formats in the given currency without converting; a malformed
+  code falls back to "amount CODE".
 - `api/client.test.ts`: envelope unwrapping, 422/network/non-JSON errors; CSRF cookie fetched before
   the first POST and `X-XSRF-TOKEN` + credentials sent; no CSRF on GET; 419 → refresh and retry once
   (then give up); `me()` → null for a guest; login/logout.
@@ -370,6 +443,8 @@ docker compose up --build
 docker compose exec api php artisan catalogue:import
 # or force the offline snapshot
 docker compose exec api php artisan catalogue:import --source=file
+# refresh exchange rates from Frankfurter (also the admin "Sync live rates" button)
+docker compose exec api php artisan currencies:sync-rates
 
 # tests (inside the containers)
 docker compose exec api php artisan test
@@ -379,9 +454,8 @@ Everything runs in containers; the only host requirement is Docker.
 
 | Service | Image | Notes |
 |---|---|---|
-| `db` | `postgres:16.16-alpine` | Named volume
- `pgdata` (catalogue survives restarts); `pg_isready` healthcheck; `init.sql` creates `catalogue_test` |
-| `api` | `php:8.4.28-cli-bookworm` + `pdo_pgsql` + `composer:2.11.2` + Node 22 | `depends_on: db (service_healthy)`; `restart: on-failure`; entrypoint: stable `APP_KEY` → `migrate --force` → `catalogue:import --if-empty` → (admin on) `admin:create --from-env` + admin build → `php -S 0.0.0.0:8000` with Laravel's router script |
+| `db` | `postgres:16.16-alpine` | Named volume `pgdata` (catalogue survives restarts); `pg_isready` healthcheck; `init.sql` creates `catalogue_test` |
+| `api` | `php:8.4.28-cli-bookworm` + `pdo_pgsql` + `composer:2.11.2` + Node 22 | `depends_on: db (service_healthy)`; `restart: on-failure`; entrypoint: stable `APP_KEY` → `migrate --force` → `catalogue:import --if-empty` → `currencies:sync-rates --if-never-updated` (not fatal) → (admin on) `admin:create --from-env` + admin build → `php -S 0.0.0.0:8000` with Laravel's router script |
 | `web` | `node:22-alpine` | Vite dev server on `0.0.0.0:5173`; `VITE_API_URL=http://localhost:8000/api/v1` |
 | `mailpit` | `axllent/mailpit:v1.34.0` | SMTP 1025, UI 8025 |
 
@@ -424,7 +498,6 @@ is part of the submission too.
 | `web-page` | React pages/components via `client.ts`, theme tokens, loading/empty/error states, RTL + MSW tests | 4 |
 | `catalogue-data` | Run/force the import, refresh the snapshot, reset or inspect the DB (asks before destructive commands) | 2–5 |
 | `run-checks` | api tests + Pint, web tests + ESLint + `tsc`, admin `types:check` + `check` + `build`, all in containers; required before "done" | 3–6 |
-
 | `pr-ready` | Rule audit, secrets check, docs in sync, fresh-clone + offline run, PR checklist | 5–6 |
 | `ai-log` | Record key prompts, AI mistakes and phase times in AI_LOG.md → AI_USAGE.md | all |
 | `laravel-backend` | House style for any PHP in `api/`: layering, container bindings, DTOs, config, errors, mail, rate limit, CORS | 3 |
@@ -434,6 +507,7 @@ is part of the submission too.
 | `react-testing` | Vitest + RTL + MSW setup and patterns for loading/empty/error/form cases | 4 |
 | `admin-page` | Add/change an `/admin` page or action: route in the protected group, thin controller, service, Admin resource, React page with token classes, `assertInertia` tests | admin |
 | `git-workflow` | Branch rules (`main` holds no code), safe staging, commit grouping and message format, push + PR with `gh` | 2–6 |
+| `dev-issues` | Record a build/test/env/tooling/UI problem in ISSUES.md (symptom → cause → fix → prevention) and keep its summary table in sync | all |
 
 Convention skills (house style, added while building): `laravel-backend`, `laravel-database`,
 `laravel-testing`, `react-frontend`, `react-testing`.
