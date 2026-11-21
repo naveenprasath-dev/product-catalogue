@@ -1,0 +1,74 @@
+---
+name: laravel-backend
+description: General Laravel + PHP 8.4 conventions for any code in api/ - layering, service container bindings, readonly DTOs, config/env, exception rendering, logging, mail, rate limiting, CORS, Pint. Use whenever writing or reviewing PHP in api/ (pair with api-endpoint, product-source or laravel-database for specific tasks).
+---
+
+# Laravel backend conventions
+
+CLAUDE.md has the rules; this skill has the house style for applying them. Task-specific skills:
+`api-endpoint` (routes/controllers), `product-source` (import), `laravel-database` (schema),
+`laravel-testing` (tests).
+
+## Layering (request → response)
+```
+Route → FormRequest → thin Controller → CatalogueService → ProductRepository (contract) → Eloquent
+                                                         ↘ Mail (EnquiryReceived)
+Controller ← Resource ← Product DTO
+```
+- Controllers never touch Eloquent, `Http`, `Mail` or `config()` directly; they call the service.
+- `CatalogueService` depends on **contracts** (`ProductRepository`), injected by constructor.
+- Models stay inside repositories and the importer. Everything above returns `Product` DTOs.
+
+## PHP style
+- Every file starts with `declare(strict_types=1);`.
+- `final` classes by default; `readonly` for DTOs and services with only injected deps.
+- Constructor property promotion; typed params and returns everywhere (`: void`, `: ?Product`,
+  `@return list<Product>` in PHPDoc for array shapes).
+- Backed enums for fixed sets (e.g. `EnquiryStatus: string { Pending = 'pending'; Sent = 'sent'; Failed = 'failed'; }`),
+  cast on the model.
+- No facades inside domain classes (`app/Catalogue/**`) when an injectable contract exists
+  (`Illuminate\Contracts\Mail\Mailer`, `Psr\Log\LoggerInterface`, `Illuminate\Http\Client\Factory`).
+  Facades are fine in controllers, commands, providers and tests.
+
+## Container bindings
+- All catalogue bindings live in `App\Providers\CatalogueServiceProvider` (registered in
+  `bootstrap/providers.php`). Use `$this->app->bind()` / `singleton()` with closures that read
+  `config('catalogue.*')` — never `env()` outside `config/*.php` (config caching breaks it).
+- Swapping an implementation = changing a binding, not editing callers.
+
+## Config and env
+- New setting → `config/catalogue.php` key with an `env('X', default)` → `.env.example` →
+  TECH_STACK.md §8. Read it with `config('catalogue.x')`.
+- Lists from env (e.g. `FEATURED_PRODUCT_IDS`) are parsed in the config file:
+  `array_values(array_filter(array_map('trim', explode(',', env('FEATURED_PRODUCT_IDS', '')))))`.
+
+## Errors (bootstrap/app.php → `withExceptions`)
+- `$exceptions->shouldRenderJsonWhen(fn ($request) => $request->is('api/*') || $request->expectsJson());`
+- `ModelNotFoundException` / `NotFoundHttpException` → `{ "message": "Not found." }` 404.
+- Domain exceptions (`CatalogueUnavailable`, mail failures) are caught in the service/command, not leaked.
+  Email failure → service marks the enquiry `failed` and the controller returns 502 `{ "message": … }`.
+- `APP_DEBUG=false` means no trace in bodies; never return `$e->getMessage()` from third-party exceptions.
+
+## Logging
+- `Log::warning()` / injected `LoggerInterface` with context arrays, e.g.
+  `$logger->warning('Fake Store unavailable, using snapshot', ['reason' => $e->getMessage()])`.
+- Never log full enquiry contents (personal data); log the enquiry id.
+
+## Mail
+- One Mailable per message (`EnquiryReceived`), Blade view with `{{ }}` (escaped) — never `{!! !!}` for user input.
+- Recipient from `config('catalogue.sales_inbox')`. Provider only via `MAIL_MAILER`.
+- Send synchronously for the PoC; wrap in try/catch for `Symfony\Component\Mailer\Exception\TransportExceptionInterface`
+  (and `Throwable` as a last resort) to mark the enquiry `failed`.
+
+## HTTP edges
+- API routes in `routes/api.php` under `Route::prefix('v1')`; enable via `php artisan install:api` if missing.
+- Rate limit: define `RateLimiter::for('enquiries', …)` in `AppServiceProvider::boot()`, apply `throttle:enquiries`.
+- CORS: `php artisan config:publish cors`, set `allowed_origins` from `env('CORS_ALLOWED_ORIGIN')`.
+- Responses: API Resources only. Cast decimals to numbers in the Resource (`(float) $this->price`),
+  because `decimal:2` casts return strings.
+
+## Commands
+- Artisan commands return `self::SUCCESS` / `self::FAILURE`; print a one-line summary; no stack traces.
+
+## Done when
+`/run-checks` passes (tests + `./vendor/bin/pint --test`).
