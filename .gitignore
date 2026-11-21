@@ -3,3 +3,4 @@
 /.env.local
 .DS_Store
 .playwright-mcp/
+.claude/settings.local.json

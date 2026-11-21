@@ -13,6 +13,10 @@ docker compose exec api ./vendor/bin/pint --test
 docker compose exec web npm test -- --run
 docker compose exec web npm run lint
 docker compose exec web npx tsc --noEmit
+# admin panel (Inertia + React, inside api/)
+docker compose exec api npm run types:check
+docker compose exec api npm run check
+docker compose exec api npm run build
 ```
 
 ## Reporting

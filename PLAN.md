@@ -373,6 +373,7 @@ is part of the submission too.
 | `laravel-testing` | PHPUnit feature/unit test patterns: `Http::fake`, `Mail::fake`, artisan, JSON shape, throttle | 3 |
 | `react-frontend` | House style for `web/`: structure, typed client + `useApi`, routing, forms, tokens, a11y | 4 |
 | `react-testing` | Vitest + RTL + MSW setup and patterns for loading/empty/error/form cases | 4 |
+| `admin-page` | Add/change an `/admin` page or action: route in the protected group, thin controller, service, Admin resource, React page with token classes, `assertInertia` tests | admin |
 | `git-workflow` | Branch rules (`main` holds no code), safe staging, commit grouping and message format, push + PR with `gh` | 2–6 |
 
 Convention skills (house style, added while building): `laravel-backend`, `laravel-database`,
