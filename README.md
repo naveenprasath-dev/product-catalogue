@@ -553,7 +553,7 @@ Built with Claude Code. The AI setup is part of the submission:
   reads Postgres only, one `ProductSource`/Mail/`client.ts` boundary each), code conventions, error
   and security rules, and "don't mark work done until tests pass".
 - **[AI_LOG.md](AI_LOG.md)**: raw log of key prompts, decisions and AI mistakes, written up as
-  `AI_USAGE.md`. <!-- VERIFY: AI_USAGE.md does not exist yet; add the link once it is written. -->
+  [AI_USAGE.md](AI_USAGE.md). Development problems and their fixes are logged in [ISSUES.md](ISSUES.md).
 - **`.claude/skills/`**: project skills that turn the plan into repeatable steps:
 
 | Skill | Purpose |

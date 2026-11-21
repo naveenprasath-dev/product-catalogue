@@ -69,8 +69,8 @@
 - **Mail is synchronous** (no queue); a failure is stored as `failed` and the client shows a retry.
 - **Auth is minimal** (phase 2): no password reset UI or email verification; admin passwords are
   reset with `php artisan admin:create --email=… --reset`. No 2FA, passkeys or admin registration.
-- **Admin panel scope**: dashboard, enquiries list/detail and re-send only. No product editing, no
-  import trigger, featured products still come from `FEATURED_PRODUCT_IDS` (ADMIN_PLAN §9).
+- **Admin panel scope**: dashboard, enquiries list/detail and re-send, and currencies (added later).
+  No product editing, no import trigger, featured products still come from `FEATURED_PRODUCT_IDS` (ADMIN_PLAN §9).
 - **Runtime**: `php -S` and the Vite dev server, file sessions and cache; fine locally, not for production.
 
 ## How the design grows beyond the PoC
@@ -155,6 +155,17 @@ Choices made during install:
   `php artisan boost:install`; project-specific changes go in `api/.ai/guidelines/`, never in the
   generated files.
 - Not used in production: it is in `require-dev`, and Boost only registers in a local environment.
+
+## AI workflow decisions
+How I ran the AI agents (details and timeline in [AI_USAGE.md](AI_USAGE.md) and [AI_LOG.md](AI_LOG.md)).
+
+| Decision | Why |
+|---|---|
+| Parallel agents with strict file ownership, contract first | The API contract went into PLAN.md before any agent started, so backend, frontend and admin agents built against the same JSON shape. Each agent owns its own files; a shared foundation is announced to the coordinator before others build on it. Fits the time-box without agents overwriting each other |
+| Only the coordinator touches git | Agents never stage, commit or push; commits are small and grouped by area (`git-workflow` skill) after `pr-ready`, so the history stays reviewable and nothing slips in unreviewed |
+| A separate QA agent before the PR | An agent that didn't write the code tests it from the outside (71 cases, [docs/qa/ADMIN_QA.md](docs/qa/ADMIN_QA.md)); bugs go back to the build agents with tests |
+| Issues log separate from the AI log | ISSUES.md is for build/environment/test problems (symptom → cause → fix); AI_LOG.md is for how the AI was used. Cross-linked where an issue was caused or caught by the AI |
+| Laravel Boost kept | See [Laravel Boost](#laravel-boost-laravelboost-dev-dependency-only) above |
 
 ## Frontend (`web/`) decisions
 | Area | Decision | Why |
@@ -257,7 +268,7 @@ and readable DOM assertions), `msw` (mock the API at the network level so the re
 | Storage | `currencies` table: `code` (ISO 4217, primary key), `name`, `symbol`, `rate decimal(18,8)` (units per 1 USD), `enabled`, `is_default`, `rate_updated_at`, timestamps. The migration inserts USD (default), EUR, GBP and INR with `insertOrIgnore` | A fresh `docker compose up` (which runs `migrate`) always has currencies; no separate seeder to remember |
 | Seeded rates | EUR 0.91003, GBP 0.76131, INR 92.93 (Frankfurter, 2026-11-21); `rate_updated_at` null | Sensible offline values. The entrypoint replaces them with live rates on first start (`currencies:sync-rates --if-never-updated`, not fatal) |
 | Live rates | Frankfurter **v2** (`https://api.frankfurter.dev/v2/rates?base=USD`, `CURRENCY_RATES_URL`). v1 (`/v1/latest`) now sends a `Deprecation` header pointing to v2, and `api.frankfurter.app` redirects. All quotes are fetched, not `quotes=…`, because v2 rejects the whole request (422) if one code is unknown | Open source (MIT), no key, ECB data (user decision). An admin-added currency Frankfurter doesn't know must not break the sync for the others |
-| One caller | `FrankfurterRateSource` (behind `CurrencyRateSource`) is the only class that calls Frankfurter. Only `RateSyncer` uses it, from `currencies:sync-rates` and the admin "Sync live rates" button. Shop requests read stored rates only | Mirrors the Fake Store rule: no request-time upstream calls, and the source is swappable |
+| One caller | `FrankfurterRateSource` (behind `CurrencyRateSource`) is the only class that calls Frankfurter. Only `RateSyncer` uses it, from `currencies:sync-rates` and the admin "Sync live rates" button. Shop requests read stored rates only | Mirrors the Fake Store rule: no request-time upstream calls, and the source is swappable. Not yet a CLAUDE.md rule (pending my decision), but followed in code: only `FrankfurterRateSource` references Frankfurter, and only `CurrencyConverter` converts prices |
 | Sync failure | Network error, timeout, HTTP error, invalid JSON, a non-list body, a wrong `base`, or a non-numeric or ≤ 0 rate all raise `RatesUnavailable` before any write. The command exits 1 and the admin sees an error toast; no rate changes | Same "all or nothing" rule as the import |
 | What a sync updates | Enabled non-base currencies present in the response, in one transaction. Disabled currencies keep their rate. Enabled codes with no live rate are reported (command output, warning toast) and kept | The admin decides what is shown; missing data never zeroes a rate |
 | `rates_updated_at` | `max(rate_updated_at)`: set by a sync and by an admin edit that changes the rate (renaming doesn't). Null while all rates are the seeded starting values | One honest "prices last re-rated" time for the shop, with no extra settings table. `--if-never-updated` uses it, so a restart never overwrites admin edits |
@@ -277,7 +288,7 @@ and readable DOM assertions), `msw` (mock the API at the network level so the re
 | Back after logout (B3) | Inertia `EncryptHistory` middleware on all admin routes (not the global `INERTIA_ENCRYPT_HISTORY`, so no new env var), `Inertia::clearHistory()` in a custom Fortify `LogoutResponse`, `Cache-Control: no-store` | Encrypted history can't be read after the session's key is gone; no-store keeps it out of the HTTP cache |
 | Signed-in user at `/admin/login` (B4) | Admin → `/admin`; **customer → the login form** (not a 403) | Shop and admin share one session: staff signed in to the shop as a customer can switch to their admin account without logging out of the shop first. Admin pages still 403 for customers |
 | Invalid list filters (B5) | Ignored (all statuses, page 1), always 200 | Stale bookmarks and hand-edited URLs should still show the list |
-| Security headers | `AdminSecurityHeaders` on `/admin` only, added to the middleware priority list before `auth` | Redirects and 403s must carry them too; the API keeps its own (stateless) headers |
+| Security headers | `AdminSecurityHeaders` on `/admin` only, added to the middleware priority list before `auth` | Redirects and 403s must carry them too; API responses are unchanged |
 | Toast duration | 6s (was Sonner's 4s) | Slow actions like "Sync live rates" finished before the admin looked back at the corner |
 
 ## Code-convention exceptions
@@ -285,3 +296,15 @@ and readable DOM assertions), `msw` (mock the API at the network level so the re
 |---|---|---|
 | `declare(strict_types=1)` | Required in all our PHP (app, routes, database, tests). Laravel's generated `config/*.php` and `public/index.php` are left as generated. | Config files coerce `env()` values; strict mode would turn a missing env var (`null`) into a `TypeError` at boot. Blade views are templates, not PHP classes. |
 
+
+## Setup and demo data
+| Area | Decision | Why |
+|---|---|---|
+| One command | `scripts/setup.sh` (bash, needs only Docker + curl): `.env` from `.env.example` if missing, `docker compose up -d --build`, wait with a timeout, seed, then real login checks with curl and a ✔/✘ summary; non-zero exit on any failure. `--check` (checks only) and `--reset` (`down -v`, y/N prompt, `--yes` to skip; refuses without a TTY unless `--yes`) | A reviewer gets a working, verified stack in one step, and the same script is a repeatable smoke test. Written for bash 3.2 so it runs on stock macOS |
+| No Makefile | Not added | The script already has the three modes and `make` is not installed everywhere (e.g. some Linux images, Windows); a second entry point would just repeat the README |
+| Login checks | Done over HTTP exactly as a browser would: XSRF-TOKEN cookie (URL-decoded) → `X-XSRF-TOKEN`, cookie jar, admin redirect to `/admin` + Inertia `dashboard` component, wrong password refused, customer via `/sanctum/csrf-cookie` with the shop `Origin`, then 403 on `/admin` | Proves CSRF, sessions, Fortify and the admin gate work end to end, not just that ports are open |
+| Demo data | `DemoSeeder`: the `ADMIN_*` admin (calls `admin:create --from-env`, so password rules live in one place), a demo customer (`DEMO_CUSTOMER_*`, local-only placeholder like `ADMIN_PASSWORD`), 12 enquiries over imported products (sent/failed/pending; two pending older than 5 minutes so "re-send" can be tried; some linked to the customer), messages prefixed `[demo]` | A reviewer sees every admin state (filters, detail, re-send) without submitting forms; the marker makes demo rows obvious and lets the seeder detect them |
+| Idempotency | Existing accounts are never changed (like `admin:create`); enquiries are created only when no `[demo]` enquiry exists | Safe on every container start and every setup run; never overwrites a password someone changed |
+| No email | Enquiries are inserted directly, not through `CatalogueService` | Seeding must not flood Mailpit (or a real provider); the status column is set to the state being demonstrated |
+| Auto-seed | `SEED_DEMO_DATA` (`config/demo.php`; `true` in `.env.example`/compose, code default `false`). The entrypoint runs the seeder after migrate, import and `admin:create`; failure is logged and not fatal. `DatabaseSeeder` also calls it when on. Forced `false` in `phpunit.xml` | Plain `docker compose up --build` gives a populated admin too; the shop must still start if seeding fails; tests seed only when they ask |
+| Production | `DemoSeeder` throws when `app()->isProduction()` | Demo accounts with known passwords must never exist in a real environment, even if the flag is left on |

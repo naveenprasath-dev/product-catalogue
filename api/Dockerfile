@@ -1,4 +1,4 @@
-# Laravel API for local development (php artisan serve). Production would use php-fpm/nginx or Octane.
+# Laravel API for local development (PHP's built-in server `php -S` with Laravel's router script; see docker/entrypoint.sh). Production would use php-fpm/nginx or Octane.
 FROM php:8.4.28-cli-bookworm
 
 RUN apt-get update \

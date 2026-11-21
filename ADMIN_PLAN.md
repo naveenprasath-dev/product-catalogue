@@ -1,6 +1,7 @@
 # Admin + Auth Plan: admin panel (React starter kit) and shop login
 
-Status: **proposal, nothing built yet.** PLAN.md §6 listed "admin UI" as a cut. The user has now
+Status: **Implemented (MVP + currencies + QA fixes); see DECISIONS.md 'Admin panel decisions' and
+docs/qa/ADMIN_QA.md. This file is the original plan.** PLAN.md §6 listed "admin UI" as a cut. The user has now
 asked for it. This file adds an admin panel without breaking any CLAUDE.md rule. Scope now also covers
 **customer login/logout in `web/`** (§19), because it shares the users table, sessions, APP_KEY and
 auth config with the admin panel. Decisions marked **[decide]** need the user's call before

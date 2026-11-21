@@ -47,6 +47,12 @@ Tool: Claude Code · Model: Claude Opus 5.5
 14. Asked for a separate **issues log** (ISSUES.md + `/dev-issues` skill) for development problems.
 15. Disk full (727 MB free) made Docker read-only; chose to free space with build-cache and unused
     image prunes (my decision).
+16. Asked for a **one-command setup**: `scripts/setup.sh` builds and starts the Docker stack, a
+    demo seeder fills the admin with sample enquiries (`SEED_DEMO_DATA`), and the script checks
+    that the admin login works at the end (my decision). In progress at the time of writing; see
+    DECISIONS.md "Setup and demo data".
+17. Asked for a **separate agent to keep AI_LOG.md, DECISIONS.md and AI_USAGE.md up to date** while
+    the setup agent works, so the write-up doesn't fall behind the code (my decision).
 
 ## Where the AI got something wrong / I corrected it
 - **No login/logout for users.** The plan quietly listed "auth" as a cut and Claude never raised it as
@@ -73,11 +79,33 @@ Tool: Claude Code · Model: Claude Opus 5.5
   the cascade). It had only checked horizontal overflow. Claude caught it reviewing the screenshot; the
   fix uses an icon-only header on small screens, verified with a bounding-box overlap check at 320/375/414px.
   Lesson: "done" claims about UI need a screenshot or a measurement of the exact thing. (caught by Claude)
+- **A contract was relayed late, and an agent edited files it didn't own.** In the three-agent admin
+  build, the backend agent reported "FOUNDATION READY", but the coordinator passed the details on to
+  the admin agent late (an interruption got in between). Meanwhile the admin agent rewrote two
+  resource files that belonged to the backend agent. I reviewed both, they were correct, so I kept
+  them. Lesson: the coordinator relays a "ready" signal straight away, and agents stop rather than
+  edit another agent's files. (caught by Claude during review)
+- **A flaky test was rerun before its name was captured.** During the pre-PR audit one full API run
+  had 1 failure in 229; the AI reran the suite (13 passing runs) without saving the first output, so
+  the failing test is unknown. Logged as ISSUES.md #25 (open). Lesson: `tee` the test output before
+  any rerun, and freeze time in time-sensitive tests. (caught by the AI agent, but too late)
+- **Screenshots went stale.** After the starter kit's Laravel logo was replaced with the shop's,
+  the README admin screenshots `admin-01` to `admin-07` still showed the old logo. The docs agent
+  noticed and the README now says so; they still need retaking. (caught by the AI agent)
 
 ## Time tracking
+Estimated from file and commit timestamps (IST, UTC+5:30, local clock); confirm before submission.
+Reading the brief before 21:56 isn't captured.
+
 | Phase | Start | End | Minutes |
 |---|---|---|---|
-| Planning | | | |
-| Building | | | |
-| Testing | | | |
-| Reviewing | | | |
+| Planning | 21:56 | 22:15 | 19 |
+| Building | 22:15 | 23:11 | 56 |
+| Testing / QA + fixes | 23:34 | 00:01 | 27 |
+| Reviewing | 00:01 | 00:10 | ~9 |
+
+- 23:11 → 23:34 went on docs, a Docker disk-full outage (ISSUES.md #16) and a usage-limit pause.
+- Building round 3 (currencies) ran in parallel with the QA pass and its fixes.
+- Setup-script work (`scripts/setup.sh`, demo seeder): ~00:10 → 00:16, all 12 checks passing from a fresh `--reset`.
+- Wall clock so far ≈ 2h15m from 21:56. Because agents ran in parallel, they logged ≈ 2.5h of work
+  in that time.
