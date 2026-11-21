@@ -20,6 +20,14 @@ docker compose exec api npm run check
 docker compose exec api npm run build
 ```
 
+## Smoke test (running stack)
+```bash
+./scripts/setup.sh --check   # services up, catalogue imported, admin login + dashboard, wrong password
+                             # refused, demo customer shop login, customer gets 403 on /admin
+```
+Exits non-zero on any ✘. Run it after changes to Docker, the entrypoint, auth, sessions/CSRF or the
+admin routes. It doesn't replace the test suites above.
+
 ## Reporting
 - Report each check as passed or failed. On a failure, show the relevant output, fix the cause and
   re-run that check, then the whole set.

@@ -10,7 +10,10 @@ description: Operate the local catalogue data - run or force catalogue:import, r
 | Import (Fake Store, with the snapshot as fallback) | `docker compose exec api php artisan catalogue:import` |
 | Import from the snapshot only (offline) | `docker compose exec api php artisan catalogue:import --source=file` |
 | Wipe everything and re-seed from scratch | `docker compose down -v && docker compose up --build` |
-| Re-run migrations and seed | `docker compose exec api php artisan migrate:fresh --seed` |
+| Re-run migrations and seed | `docker compose exec api php artisan migrate:fresh --seed` (import, then `DemoSeeder` if `SEED_DEMO_DATA=true`) |
+| Seed the demo data (admin, demo customer, 12 `[demo]` enquiries; idempotent, sends no email) | `docker compose exec api php artisan db:seed --class=DemoSeeder` |
+| Fresh database + setup + login checks (asks y/N; `--yes` skips) | `./scripts/setup.sh --reset` |
+| Count the demo enquiries | `docker compose exec db psql -U catalogue -d catalogue -c "select status, count(*) from enquiries where message like '[demo]%' group by status;"` |
 | Refresh exchange rates from Frankfurter (same as the admin "Sync live rates") | `docker compose exec api php artisan currencies:sync-rates` |
 | Sync rates only if none was ever synced or edited (what the entrypoint runs) | `docker compose exec api php artisan currencies:sync-rates --if-never-updated` |
 | Inspect currencies | `docker compose exec db psql -U catalogue -d catalogue -c 'select code, rate, enabled, is_default, rate_updated_at from currencies order by code;'` |
@@ -30,6 +33,13 @@ command fails with `MissingAppKeyException`, run it as
   `rate_updated_at` null; the first start replaces them once (`--if-never-updated`). Admin edits and
   syncs set `rate_updated_at`, so later starts never overwrite them.
 - To go back to the seeded rates, reset the database (below); there is no "reset rates" command.
+
+## Demo data (`api/database/seeders/DemoSeeder.php`)
+- Runs on container start when `SEED_DEMO_DATA=true` (local default), from `./scripts/setup.sh`, and
+  from `migrate --seed`. Refuses in production. Needs products: run the import first.
+- Idempotent: accounts are never changed once they exist; enquiries are skipped when any `[demo]`
+  enquiry exists. To regenerate them, delete the `[demo]` rows (or reset the DB) and seed again.
+- Never sends email (rows are inserted directly). Tests: `tests/Feature/Admin/DemoSeederTest.php`.
 
 ## Refreshing the snapshot
 ```bash

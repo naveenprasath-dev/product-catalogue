@@ -157,6 +157,8 @@ docker compose exec web npm test
 | `SESSION_PATH`, `SESSION_DOMAIN`, `SESSION_SECURE_COOKIE` | api | `/`, empty (host-only cookie), `false` (`true` behind HTTPS) |
 | `ADMIN_ENABLED` | api | `true` in `.env.example`/compose (code default `false`) |
 | `ADMIN_NAME`, `ADMIN_EMAIL`, `ADMIN_PASSWORD` | api | `Admin`, `admin@example.com`, `local-admin-password` (local-only; first admin created on start) |
+| `SEED_DEMO_DATA` | api (entrypoint, `config/demo.php`) | `true` in `.env.example`/compose (code default `false`): run `DemoSeeder` on start; never in production |
+| `DEMO_CUSTOMER_EMAIL`, `DEMO_CUSTOMER_PASSWORD` | api (`config/demo.php`) | `customer@example.com`, `local-customer-password` (local-only demo shop customer) |
 | `VITE_API_URL` | web | `http://localhost:8000/api/v1` |
 
 Fixed values (not env vars): `config/catalogue.php` (Fake Store timeout/retries, top-rated count, enquiry

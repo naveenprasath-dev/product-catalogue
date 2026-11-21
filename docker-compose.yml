@@ -65,6 +65,9 @@ services:
       ADMIN_NAME: ${ADMIN_NAME:-Admin}
       ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@example.com}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-local-admin-password}
+      SEED_DEMO_DATA: ${SEED_DEMO_DATA:-true}
+      DEMO_CUSTOMER_EMAIL: ${DEMO_CUSTOMER_EMAIL:-customer@example.com}
+      DEMO_CUSTOMER_PASSWORD: ${DEMO_CUSTOMER_PASSWORD:-local-customer-password}
     ports:
       - "8000:8000"
     volumes:

@@ -54,6 +54,9 @@
         <server name="CURRENCY_RATES_URL" value="https://api.frankfurter.dev/v2" force="true"/>
         <env name="CORS_ALLOWED_ORIGIN" value="http://localhost:5173" force="true"/>
         <server name="CORS_ALLOWED_ORIGIN" value="http://localhost:5173" force="true"/>
+        <!-- The container sets SEED_DEMO_DATA=true; tests seed demo data only when they ask for it. -->
+        <env name="SEED_DEMO_DATA" value="false" force="true"/>
+        <server name="SEED_DEMO_DATA" value="false" force="true"/>
         <env name="QUEUE_CONNECTION" value="sync"/>
         <env name="SESSION_DRIVER" value="array"/>
         <env name="PULSE_ENABLED" value="false"/>

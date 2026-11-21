@@ -32,8 +32,30 @@ Contents: [Quick start](#quick-start) · [Shop accounts](#shop-accounts) · [Cur
 
 ## Quick start
 
-**Prerequisites:** Docker with Docker Compose. Nothing else (no local PHP, Node or Postgres), and
-no accounts or paid services.
+**Prerequisites:** Docker with Docker Compose, and curl. Nothing else (no local PHP, Node or
+Postgres), and no accounts or paid services.
+
+**Recommended: one command** (from a fresh clone):
+
+```bash
+./scripts/setup.sh
+```
+
+It copies `.env.example` to `.env` (only if `.env` is missing), runs `docker compose up -d --build`,
+waits for Postgres, the API (`/up` and `/api/v1/categories`), the web app and Mailpit, seeds the demo
+data (idempotent), then **checks the logins for real** with curl: the admin logs in and sees the
+dashboard and the demo enquiries, a wrong password is refused, and the demo customer can log in to the
+shop but gets a 403 on `/admin`. It prints a ✔/✘ summary, the URLs and the local demo logins, and
+exits non-zero if any check fails.
+
+| Command | What it does |
+|---|---|
+| `./scripts/setup.sh` | Build, start, seed demo data, run the checks |
+| `./scripts/setup.sh --check` | Only the checks, against the running stack (no build, no seeding); a quick smoke test |
+| `./scripts/setup.sh --reset` | `docker compose down -v` first (**deletes the database**: asks y/N), then a fresh setup |
+| `./scripts/setup.sh --reset --yes` | Same, without the prompt |
+
+**Alternative: plain Docker Compose**
 
 ```bash
 cp .env.example .env
@@ -41,7 +63,8 @@ docker compose up --build
 ```
 
 `docker-compose.yml` has the same defaults built in, so the first line is optional; copy it when you
-want to change a setting.
+want to change a setting. This **also seeds the demo data** on start (`SEED_DEMO_DATA=true`), so the
+admin panel is populated either way; only the login checks are skipped.
 
 | What | URL |
 |---|---|
@@ -49,6 +72,13 @@ want to change a setting.
 | API | http://localhost:8000/api/v1 (e.g. http://localhost:8000/api/v1/products/featured) |
 | Mailpit (the "sales inbox") | http://localhost:8025 |
 | Admin panel | http://localhost:8000/admin (local login `admin@example.com` / `local-admin-password`) |
+
+**Local demo logins** (local-only defaults from `.env`; change them for anything that isn't your machine):
+
+| Who | Where | Email / password |
+|---|---|---|
+| Admin | http://localhost:8000/admin | `admin@example.com` / `local-admin-password` (`ADMIN_EMAIL` / `ADMIN_PASSWORD`) |
+| Demo customer | http://localhost:5173/login | `customer@example.com` / `local-customer-password` (`DEMO_CUSTOMER_EMAIL` / `DEMO_CUSTOMER_PASSWORD`) |
 
 **What happens on start** (`api/docker/entrypoint.sh`):
 
@@ -66,7 +96,9 @@ want to change a setting.
 6. If `ADMIN_ENABLED=true`: `php artisan admin:create --from-env` creates the first admin from
    `ADMIN_*` (idempotent, never resets a password), `npm ci` syncs the admin panel's `node_modules`,
    and `npm run build` builds the admin front-end when `public/build` is missing or older than its sources.
-7. PHP's built-in server (`php -S` with Laravel's router script) on port 8000. Not `artisan serve`,
+7. If `SEED_DEMO_DATA=true` (the local default): `php artisan db:seed --class=DemoSeeder` (see
+   [Demo data](#demo-data)). Not fatal: a failure logs one line and the server still starts.
+8. PHP's built-in server (`php -S` with Laravel's router script) on port 8000. Not `artisan serve`,
    which strips the container's env vars from its workers.
 
 The **first** start takes about 30–60 seconds longer than later ones (`npm ci` + the admin build).
@@ -160,7 +192,8 @@ docker compose exec api npm run build
 ## Tests and checks
 
 All checks run inside the containers (start the stack first; `docker compose up -d --build` runs it
-in the background). The same list is in the `run-checks` skill.
+in the background). The same list is in the `run-checks` skill. For an end-to-end smoke test of the
+running stack (services up, admin and customer logins), run `./scripts/setup.sh --check`.
 
 ```bash
 docker compose exec api php artisan test             # PHPUnit feature + unit tests
@@ -213,7 +246,29 @@ docker compose exec api php artisan catalogue:import --if-empty
 - If every source fails (Fake Store down **and** snapshot missing/invalid, or fallback disabled), it
   prints the reason, changes nothing and exits 1.
 - Products that disappear upstream are kept (enquiries reference them); see DECISIONS.md.
-- `php artisan migrate --seed` also works: `DatabaseSeeder` calls `catalogue:import`.
+- `php artisan migrate --seed` also works: `DatabaseSeeder` calls `catalogue:import`, then
+  `DemoSeeder` when `SEED_DEMO_DATA=true` (never in production).
+
+### Demo data
+
+`Database\Seeders\DemoSeeder` fills the local stack so a reviewer sees a populated admin panel:
+
+- the admin from `ADMIN_*` (through `admin:create --from-env`, so the same password rules apply),
+- a demo shop customer, "Demo Customer" (`DEMO_CUSTOMER_EMAIL` / `DEMO_CUSTOMER_PASSWORD`),
+- 12 sample enquiries on imported products: `sent`, `failed` and `pending` (two pending ones are
+  older than 5 minutes, so they can be re-sent from the admin), some linked to the demo customer,
+  some from guests. Each message starts with **`[demo]`**.
+
+It is idempotent (existing accounts are never changed, and no enquiries are added once any `[demo]`
+enquiry exists), inserts rows directly so **no email is sent**, skips the enquiries with a message
+when there are no products yet, and **refuses to run in production**. It runs on container start
+when `SEED_DEMO_DATA=true` (set `false` for an empty admin) and from `./scripts/setup.sh`.
+
+```bash
+docker compose exec api php artisan db:seed --class=DemoSeeder   # safe to repeat
+```
+
+To start over with fresh demo data: `./scripts/setup.sh --reset` (deletes the database).
 
 **Refreshing the snapshot** (the file is also the test fixture, so run the tests afterwards):
 
@@ -379,6 +434,8 @@ the containers by `docker-compose.yml`. The ones you are most likely to change:
 | `SESSION_PATH`, `SESSION_DOMAIN`, `SESSION_SECURE_COOKIE` | `/`, empty, `false` | One host-only `localhost` cookie shared by `:5173` and `:8000`; `true` behind HTTPS |
 | `ADMIN_ENABLED` | `true` (code default `false`) | Turns the `/admin` panel on |
 | `ADMIN_NAME`, `ADMIN_EMAIL`, `ADMIN_PASSWORD` | `Admin`, `admin@example.com`, `local-admin-password` | First admin, created on start if missing (local-only defaults) |
+| `SEED_DEMO_DATA` | `true` (code default `false`) | Seed the demo customer and `[demo]` enquiries on start ([Demo data](#demo-data)); never in production |
+| `DEMO_CUSTOMER_EMAIL`, `DEMO_CUSTOMER_PASSWORD` | `customer@example.com`, `local-customer-password` | Demo shop customer created by `DemoSeeder` (local-only defaults) |
 | `VITE_API_URL` | `http://localhost:8000/api/v1` | API base URL for the web client (read only by `client.ts`) |
 
 Also in `.env.example`: `APP_NAME`, `APP_ENV`, `APP_URL`, `LOG_CHANNEL`, `CACHE_STORE`,
@@ -416,7 +473,8 @@ product-catalogue/
 │   ├── routes/web.php            /admin routes (only when ADMIN_ENABLED=true)
 │   ├── tests/{Feature,Unit}/     Feature/Auth, Feature/Admin for the new parts
 │   ├── docker/entrypoint.sh      composer install → APP_KEY → migrate → import --if-empty →
-│   │                             sync-rates --if-never-updated → admin:create + admin build → php -S
+│   │                             sync-rates --if-never-updated → admin:create + admin build →
+│   │                             DemoSeeder (SEED_DEMO_DATA) → php -S
 │   └── Dockerfile                PHP 8.4 + Composer + Node 22 (admin build)
 ├── web/                          React + TypeScript (Vite)
 │   ├── src/
@@ -434,6 +492,7 @@ product-catalogue/
 │   └── Dockerfile
 ├── docker/postgres/init.sql      creates the catalogue_test database
 ├── docker-compose.yml            web, api, db, mailpit
+├── scripts/setup.sh              one-command setup + login smoke checks (--check, --reset)
 ├── .env.example
 ├── .claude/skills/               Claude Code project skills
 ├── docs/screenshots/             README screenshots
@@ -559,7 +618,9 @@ Not built in the PoC; the swap points above are what makes each step a config or
 | `/admin` is a 404 | `ADMIN_ENABLED` isn't `true`. Set it in `.env` and restart the api container. |
 | Web code changes don't show up | The Vite dev server polls the bind-mounted `web/` every 300ms (`vite.config.ts`), because file events from a macOS host don't reach the container. Reload the page; if still stale, `docker compose restart web`. |
 | No email in Mailpit | Check http://localhost:8025 and `SALES_INBOX_ADDRESS`; a send failure returns 502 and the enquiry is stored as `failed`. |
-| Want a clean slate | `docker compose down -v && docker compose up --build` (deletes enquiries too). |
+| Want a clean slate | `./scripts/setup.sh --reset` (asks first), or `docker compose down -v && docker compose up --build`. Both delete enquiries too; the demo data is seeded again. |
+| `scripts/setup.sh` reports a ✘ | Each line names the failing check. "timed out" on the API usually means it is still building the admin panel on a slow first start (raise `SETUP_TIMEOUT`, seconds, default 600) or is restart-looping (`docker compose logs api`). A failing demo-customer login after you changed its password is expected: the seeder never resets an existing account. |
+| Admin has no enquiries | `SEED_DEMO_DATA` is `false`, or there were no products when it ran. Run `docker compose exec api php artisan db:seed --class=DemoSeeder`. |
 
 ## Screenshots
 

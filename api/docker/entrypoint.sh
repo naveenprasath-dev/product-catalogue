@@ -1,5 +1,5 @@
 #!/bin/sh
-# migrate -> import the catalogue on first start only -> serve.
+# migrate -> import the catalogue on first start only -> admin -> demo data -> serve.
 # Exits non-zero (compose restarts the container) if every product source fails.
 set -eu
 
@@ -47,6 +47,13 @@ if [ "${ADMIN_ENABLED:-false}" = "true" ]; then
         echo "Building the admin panel (first start takes ~20s)..."
         npm run build
     fi
+fi
+
+# Demo data (admin, demo customer, sample enquiries) for reviewers; idempotent, never in production
+# (DemoSeeder refuses). Not fatal: the shop and admin work without it.
+if [ "${SEED_DEMO_DATA:-false}" = "true" ]; then
+    php artisan db:seed --class=DemoSeeder --force --no-interaction \
+        || echo "Demo data seeding failed (non-fatal); retry with: docker compose exec api php artisan db:seed --class=DemoSeeder"
 fi
 
 # PHP's built-in server with Laravel's router script (what `artisan serve` runs underneath).
