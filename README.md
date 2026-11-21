@@ -23,7 +23,10 @@ products are imported from [Fake Store](https://fakestoreapi.com) into Postgres 
 Postgres and returns its own response shape, email goes through Laravel Mail (provider picked by
 `MAIL_MAILER`), and the UI is styled only through CSS theme tokens.
 
-Contents: [Quick start](#quick-start) · [Shop accounts](#shop-accounts) · [Currencies](#currencies) ·
+> **Reviewing?** Run `./scripts/setup.sh`, then follow the [Reviewer walkthrough](#reviewer-walkthrough)
+> (about 10 minutes, with the demo logins and what you should see at each step).
+
+Contents: [Quick start](#quick-start) · [Reviewer walkthrough](#reviewer-walkthrough) · [Shop accounts](#shop-accounts) · [Currencies](#currencies) ·
 [Admin panel](#admin-panel) · [Tests and checks](#tests-and-checks) ·
 [Catalogue data](#catalogue-data) · [Architecture](#architecture) · [API](#api) ·
 [Configuration](#configuration) · [Project layout](#project-layout) · [Stack](#stack) ·
@@ -105,6 +108,69 @@ The **first** start takes about 30–60 seconds longer than later ones (`npm ci`
 Wait for `API listening on http://0.0.0.0:8000` in `docker compose logs api`.
 
 Then submit an enquiry from any product page and open Mailpit to see the email.
+
+## Reviewer walkthrough
+
+About 10 minutes. Start the stack with `./scripts/setup.sh` (it seeds the demo data and ends with
+✔ checks). Every step says what you should see.
+
+**Logins** (local-only defaults from `.env.example`; never use them outside your machine):
+
+| Role | Where | Email | Password |
+|---|---|---|---|
+| Admin | http://localhost:8000/admin | `admin@example.com` | `local-admin-password` |
+| Demo customer | http://localhost:5173/login | `customer@example.com` | `local-customer-password` |
+| Your own customer | http://localhost:5173/register | any email | at least 8 characters |
+
+### 1. Shop as a guest (http://localhost:5173)
+
+1. **Home**: a hero, "Shop by category" tiles and 5 featured products with a "Top rated" badge.
+2. Click **Electronics**: a breadcrumb, **Top rated** (the 3 best-rated products) and **More products**.
+3. Search for `jacket`: 4 results. Search for `zzz`: a clear "no results" state.
+4. Switch the header dropdown to **₹ INR**: every price changes (the Mens Cotton Jacket becomes
+   ₹5,203.15, i.e. $55.99 × 92.93). Reload: INR is remembered.
+5. Open any product and click **Send enquiry** with the form empty: errors under Name and Email.
+6. Fill in a name and an email and send: a **"Thank you"** message.
+7. Open **Mailpit** (http://localhost:8025): the enquiry email to `sales@example.com`.
+
+### 2. Shop as a customer
+
+1. **Log in** with a wrong password: an error under the email field.
+2. Log in as `customer@example.com` / `local-customer-password`: the header shows **"Hi, Demo Customer"**.
+3. Open any product: **Name and Email are pre-filled**. Send an enquiry (it's linked to the account).
+4. **Log out**: the pre-filled name and email are cleared; the header shows Log in / Register.
+5. Optional: **Register** a new account; you're signed in straight away.
+
+### 3. Customers can't reach the admin
+
+While signed in as the customer, open http://localhost:8000/admin: **403 Forbidden**.
+
+### 4. Admin panel (http://localhost:8000/admin)
+
+1. A wrong password gives a generic error; after 6 attempts in a minute:
+   **"Too many attempts. Try again in N seconds."**
+2. Log in as `admin@example.com` / `local-admin-password`: the **Dashboard** shows 20 products,
+   4 categories and enquiry counts by status (the demo data includes sent, pending and failed ones).
+3. **Enquiries**: filter by **Failed**, open one and click **Re-send**: a success toast, the status
+   becomes *sent*, and the email appears in Mailpit.
+4. **Currencies**:
+   - **Sync live rates**: a success toast; "Rates last updated" changes (rates come from
+     [Frankfurter](https://frankfurter.dev), open source, no key).
+   - **Edit** EUR's rate (e.g. to `1`), then reload the shop in EUR: prices follow the new rate.
+   - **Make default** on GBP: new shop visitors start in GBP.
+5. **Log out**, then press the browser **Back** button: you stay on the login page and no enquiry
+   data is shown (history is cleared and admin pages aren't cached).
+
+### 5. Automated checks
+
+```bash
+./scripts/setup.sh --check                  # logins and services, end to end (✔/✘ summary)
+docker compose exec api php artisan test    # API feature + unit tests
+docker compose exec web npm test            # shop tests
+```
+
+To get back to the clean demo state after experimenting (e.g. after changing rates or the default
+currency): `./scripts/setup.sh --reset` (asks before deleting the database).
 
 ## Shop accounts
 
