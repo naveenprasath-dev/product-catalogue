@@ -5,3 +5,6 @@ storage/framework/cache/data/*
 storage/framework/views/*.php
 .phpunit.cache
 storage/app/.app-key
+node_modules
+public/build
+public/hot

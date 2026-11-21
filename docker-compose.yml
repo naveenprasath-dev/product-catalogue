@@ -70,6 +70,8 @@ services:
       - ./api:/var/www/html
       # Keep the image's vendor/ instead of the host's (anonymous volume).
       - /var/www/html/vendor
+      # Same for the admin panel's node_modules (npm ci runs in the entrypoint; keeps it off the host).
+      - /var/www/html/node_modules
 
   mailpit:
     image: axllent/mailpit:v1.34.0
