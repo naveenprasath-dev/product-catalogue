@@ -49,7 +49,7 @@ Tool: Claude Code · Model: Claude Opus 5.5
     image prunes (my decision).
 16. Asked for a **one-command setup**: `scripts/setup.sh` builds and starts the Docker stack, a
     demo seeder fills the admin with sample enquiries (`SEED_DEMO_DATA`), and the script checks
-    that the admin login works at the end (my decision). In progress at the time of writing; see
+    that the admin login works at the end (my decision). Done: all 12 checks pass from a fresh `--reset`; see
     DECISIONS.md "Setup and demo data".
 17. Asked for a **separate agent to keep AI_LOG.md, DECISIONS.md and AI_USAGE.md up to date** while
     the setup agent works, so the write-up doesn't fall behind the code (my decision).
